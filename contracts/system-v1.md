@@ -21,25 +21,30 @@ The implementation MUST fail closed. Missing proof, malformed proof, proof/candi
 ## 2. Trust topology
 
 ```text
-agent/provider evidence
+probabilistic candidate source (for example 0G Compute)
         |
         v
-ProofVerifier adapter  ---- provider-specific trust ----
-        |
-        v
-normalized VerificationResult
-        |
-        +----> deterministic Policy
-        |             |
-        |             v
-        +-------> ReceiptGate
-                       |
-                 PASS  |  FAIL
-                       |
-                 execute() / blocked
+CandidateAction -------------------------------+
+        |                                       |
+agent/provider evidence                        |
+        |                                       |
+        v                                       |
+ProofVerifier adapter                           |
+        |                                       |
+        v                                       |
+normalized VerificationResult                  |
+        |                                       |
+        +---------------------> deterministic Policy
+                                      |
+                                      v
+                                 ReceiptGate
+                                 /         \
+                              PASS         FAIL
+                               |             |
+                           execute()        BLOCK
 ```
 
-The core does not decide whether 0G, another TEE provider, or a local test fixture is trustworthy. A provider adapter owns that translation. The core owns only fail-closed consumption of the normalized result.
+A model may propose a candidate; it never grants permission. A provider adapter owns provider-specific proof translation. Core owns only deterministic policy and fail-closed side-effect reachability.
 
 ## 3. Durable owners
 
@@ -50,10 +55,12 @@ The core does not decide whether 0G, another TEE provider, or a local test fixtu
 | deterministic policy decision | `core/policy.ts` |
 | side-effect reachability | `core/gate.ts` |
 | execution receipt schema | `core/receipt.ts` |
+| 0G Compute response -> candidate | `adapters/0g/compute/client.ts` |
 | 0G transcript taskHash | `adapters/0g/taskHash.ts` |
-| 0G SDK/result composition | `adapters/0g/verifier.ts` |
+| 0G Agentic ID SDK/result composition | `adapters/0g/verifier.ts` |
 | core positive/negative oracle | `tests/gate.test.ts` |
-| 0G adapter oracle | `tests/0g-verifier.test.ts` |
+| 0G Compute oracle | `tests/0g-compute.test.ts` |
+| 0G Agentic ID oracle | `tests/0g-verifier.test.ts` |
 | cloud runtime witness | `.github/workflows/*.yml` |
 
 No adapter may call the side effect directly.
@@ -62,7 +69,7 @@ No adapter may call the side effect directly.
 
 A verifier receives both the proof and the exact normalized candidate. A PASS means the adapter has established whatever provider-specific binding it claims between those two values. ReceiptGate never infers binding from an agent name, model output, screenshot, text explanation, or reputation score.
 
-The fixture verifier uses `candidateHash` only to prove core wiring. The 0G verifier deliberately ignores that generic field: its candidate is extracted from the response body covered by the 0G taskHash, then compared deterministically with the candidate presented to the gate.
+The fixture verifier uses `candidateHash` only to prove core wiring. The 0G Agentic ID verifier deliberately ignores that generic field: its candidate is extracted from the response body covered by the 0G taskHash, then compared deterministically with the candidate presented to the gate.
 
 ## 5. Policy
 
@@ -70,13 +77,43 @@ Policy evaluation is deterministic and has no network access. v1 supports a smal
 
 The first policy surface supports maximum amount and optional allowed action kinds. Unknown/invalid numeric values deny.
 
+A model exceeding the requested budget is not a parser error. It is a policy-denial case. This separation is deliberate: probabilistic generation proposes state; deterministic policy owns authorization.
+
 ## 6. Receipt
 
 Every gate call returns an `ExecutionReceipt` containing the candidate id/hash, normalized verification result, normalized policy decision, execution-attempt flag, and final status (`blocked`, `executed`, or `execution_failed`).
 
 A ReceiptGate receipt records what ReceiptGate observed. It is not itself a provider attestation.
 
-## 7. 0G Agentic ID proof boundary
+## 7. 0G Compute boundary
+
+0G Compute is a candidate source, not gate authority.
+
+The Hackathon runtime uses the already-provisioned OpenAI-compatible direct endpoint:
+
+```text
+ZG_SERVICE_URL + ZG_API_SECRET + model
+        |
+        v
+0G Compute /v1/proxy/chat/completions
+        |
+        v
+strict JSON parser
+        |
+        v
+CandidateAction
+        |
+        v
+proof + deterministic policy still required before execute()
+```
+
+`adapters/0g/compute/client.ts` rejects non-JSON prose/code fences, unexpected fields, invalid types, non-finite/non-positive amounts, and currency mismatch. It does not silently clamp amount to budget.
+
+Wallet login, ledger deposit, provider fund transfer, provider acknowledgement, and generation of the `app-sk-*` API secret are one-time provisioning concerns. The normal inference workflow must not require `PRIVATE_KEY`.
+
+A successful Compute response proves only that the configured 0G Compute endpoint returned the candidate. It does not prove Agentic ID identity, `agentSeal`, ServeProof, or TEE execution unless a separate exercised primitive establishes those claims.
+
+## 8. 0G Agentic ID proof boundary
 
 0G's official TypeScript SDK exposes `ag.reputation.verifyProof(serveProof)`. The upstream implementation checks:
 
@@ -97,7 +134,7 @@ keccak256(
 )
 ```
 
-ReceiptGate's 0G PASS therefore requires both:
+ReceiptGate's 0G Agentic ID PASS therefore requires:
 
 ```text
 official verifyProof(serveProof) == PASS
@@ -109,20 +146,20 @@ candidate extracted from that responseBody == gate candidate
 
 Signature recovery/on-chain identity verification remains in the official SDK. ReceiptGate mirrors only the published transcript-hash formula needed to join the proof to bytes it is authorizing.
 
-## 8. Evidence tiers
+## 9. Evidence tiers
 
-- P: prompts/reasoning may guide work.
+- P: prompts/model output/reasoning may propose work or candidates.
 - N: plan/README/diagram may describe work.
 - L: Bun tests plus planted negatives prove behavior in that runtime.
 - R: GitHub Actions executing the exact candidate/ref and retaining a receipt artifact proves the cloud runner exercised it.
 
-Mocked SDK results in the 0G adapter oracle prove composition only. They do not prove a live 0G chain, agentSeal, TEE, or deployed Agentic ID. Those require a separate live provider probe.
+Mocked SDK results prove adapter composition only. A live Compute canary proves an inference call only. A real Agentic ID claim requires the separate live ServeProof canary.
 
-## 9. Non-goals before a concrete atom
+## 10. Non-goals before a concrete atom
 
 Do not add a database, generalized workflow engine, multi-chain abstraction, payment settlement, policy DSL, generic MCP proxy, agent scheduler, custom signature implementation, or production auth UI.
 
-## 10. Acceptance
+## 11. Acceptance
 
 Core oracle:
 
@@ -130,10 +167,11 @@ Core oracle:
 bun run acceptance
 ```
 
-0G adapter oracle (after dependency install):
+0G adapter oracles:
 
 ```bash
+bun install
 bun run test:0g
 ```
 
-Required planted negatives keep side-effect call count at zero for invalid proof, candidate tampering, verifier outage, and policy denial.
+Required planted negatives keep side-effect call count at zero for invalid proof, candidate tampering, verifier outage, policy denial, and model-generated over-budget candidates.
