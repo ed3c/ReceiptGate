@@ -1,0 +1,55 @@
+name: vercel-shape
+
+on:
+  pull_request:
+    paths:
+      - 'vercel.json'
+      - 'api/**'
+      - 'public/**'
+      - 'demo/wallet.ts'
+      - 'demo/vercel.ts'
+      - 'tests/wallet-authorization.test.ts'
+      - 'package.json'
+      - '.github/workflows/vercel-shape.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'vercel.json'
+      - 'api/**'
+      - 'public/**'
+      - 'demo/wallet.ts'
+      - 'demo/vercel.ts'
+      - 'tests/wallet-authorization.test.ts'
+      - 'package.json'
+      - '.github/workflows/vercel-shape.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Run wallet authorization planted controls
+        run: bun run test:wallet
+      - name: Import every Vercel Bun function
+        run: |
+          bun -e 'await import("./api/config.ts"); await import("./api/healthz.ts"); await import("./api/demo.ts"); await import("./api/live/compute.ts"); await import("./api/live/agent.ts"); await import("./api/wallet/challenge.ts"); await import("./api/wallet/verify.ts"); console.log("vercel bun function imports: ok")'
+      - name: Validate Vercel Bun shape and secret boundary
+        run: |
+          bun -e 'const c=await Bun.file("vercel.json").json();if(c.bunVersion!=="1.x"||c.outputDirectory!=="public")throw new Error("vercel Bun configuration mismatch")'
+          test -f public/index.html
+          ! grep -R "process.env.PRIVATE_KEY" api demo/vercel.ts demo/wallet.ts
