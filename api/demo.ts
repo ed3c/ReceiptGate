@@ -1,2 +1,6 @@
 import { demoHandler } from "../demo/vercel";
-export default { fetch: demoHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: demoHandler,
+});
