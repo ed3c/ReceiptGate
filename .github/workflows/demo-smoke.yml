@@ -1,0 +1,57 @@
+name: demo-smoke
+
+on:
+  pull_request:
+    paths:
+      - 'demo/**'
+      - 'scripts/demo.sh'
+      - 'scripts/demo-smoke.sh'
+      - 'package.json'
+      - '.github/workflows/demo-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'demo/**'
+      - 'scripts/demo.sh'
+      - 'scripts/demo-smoke.sh'
+      - 'package.json'
+      - '.github/workflows/demo-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      DEMO_PORT: 3210
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Assert no wallet key in runtime
+        run: test -z "${PRIVATE_KEY:-}"
+      - name: Start real HTTP server and exercise normal + tamper paths
+        run: bash scripts/demo-smoke.sh
+      - name: Assert exact-head receipt
+        run: bun -e 'const r=await Bun.file("artifacts/demo-smoke.json").json();if(!r.accepted||r.commit!==process.env.TARGET_SHA||r.normal.status!=="executed"||r.tamper.status!=="blocked"||r.tamper.candidateBinding!==false)throw new Error("demo smoke receipt mismatch")'
+      - name: Retain judge-demo runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-demo-${{ env.TARGET_SHA }}
+          path: |
+            artifacts/demo-smoke.json
+            artifacts/demo-normal.json
+            artifacts/demo-tamper.json
+            artifacts/demo-server.log
+          if-no-files-found: error
+          retention-days: 7

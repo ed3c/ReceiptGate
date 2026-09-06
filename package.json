@@ -12,6 +12,8 @@
     "probe:0g-compute-live": "bun run adapters/0g/compute/live-canary.ts",
     "demo:doctor": "bun run scripts/demo-doctor.ts",
     "demo:prepare": "bash scripts/demo.sh",
+    "demo:serve": "bun run demo/server.ts",
+    "demo:smoke": "bash scripts/demo-smoke.sh",
     "provision:agentic-id": "bun run scripts/provision-agentic-id.ts",
     "provision:compute": "bash scripts/provision-compute-local.sh"
   },

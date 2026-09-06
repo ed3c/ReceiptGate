@@ -7,13 +7,11 @@ case "$MODE" in
   *) echo "usage: ./scripts/demo.sh [fixture|live-compute|live-agent|live]" >&2; exit 2 ;;
 esac
 
-bun run demo:doctor "$MODE"
-
-echo
-echo "ReceiptGate demo prerequisites for '$MODE' are ready."
-if [[ -f demo/server.ts ]]; then
-  export DEMO_MODE="$MODE"
-  exec bun run demo:serve
+if [[ -n "${PRIVATE_KEY:-}" ]]; then
+  echo "Refusing to start judge runtime while PRIVATE_KEY is present. Provision first, then unset it." >&2
+  exit 3
 fi
 
-echo "Judge-facing UI has not been landed on this atom yet; run the next demo-runtime atom after merge." >&2
+bun run demo:doctor "$MODE"
+export DEMO_MODE="$MODE"
+exec bun run demo:serve
