@@ -9,6 +9,7 @@ on:
       - 'demo/wallet.ts'
       - 'demo/vercel.ts'
       - 'tests/wallet-authorization.test.ts'
+      - 'tests/vercel-demo-parity.test.ts'
       - 'package.json'
       - '.github/workflows/vercel-shape.yml'
   workflow_dispatch:
@@ -21,6 +22,7 @@ on:
       - 'demo/wallet.ts'
       - 'demo/vercel.ts'
       - 'tests/wallet-authorization.test.ts'
+      - 'tests/vercel-demo-parity.test.ts'
       - 'package.json'
       - '.github/workflows/vercel-shape.yml'
 
@@ -46,6 +48,8 @@ jobs:
         run: bun install
       - name: Run wallet authorization planted controls
         run: bun run test:wallet
+      - name: Prove Vercel demo adapter parity with core gate
+        run: bun test tests/vercel-demo-parity.test.ts
       - name: Bootstrap every Vercel Bun function
         run: |
           if grep -R --include='*.ts' -n 'Bun\.serve' api; then
