@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: Wait for exact Vercel production commit
         run: |
           set -euo pipefail
@@ -42,9 +45,6 @@ jobs:
           done
           cat artifacts/health.json || true
           test "$ready" = 1
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
       - name: Public HTTPS smoke
         run: |
           set -euo pipefail
