@@ -48,7 +48,11 @@ jobs:
         run: bun run test:wallet
       - name: Bootstrap every Vercel Bun function
         run: |
-          bun -e 'await import("./api/config.ts"); await import("./api/healthz.ts"); await import("./api/demo.ts"); await import("./api/live/compute.ts"); await import("./api/live/agent.ts"); await import("./api/wallet/challenge.ts"); await import("./api/wallet/verify.ts"); console.log("vercel Bun.serve bootstraps: ok"); process.exit(0)'
+          if grep -R --include='*.ts' -n 'Bun\.serve' api; then
+            echo 'api/** must use export default { fetch }, not Bun.serve' >&2
+            exit 1
+          fi
+          bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
       - name: Assert anonymous sponsored Compute is rejected before provider execution
         run: |
           bun -e 'const {liveComputeHandler}=await import("./demo/vercel.ts");const r=await liveComputeHandler(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));if(r.status!==401)throw new Error(`anonymous live Compute status ${r.status}`);console.log(await r.text())'
