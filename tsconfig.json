@@ -5,7 +5,17 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "types": ["bun-types"]
+    "skipLibCheck": true,
+    "types": [
+      "bun-types"
+    ]
   },
-  "include": ["core/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+  "include": [
+    "api/**/*.ts",
+    "demo/**/*.ts",
+    "adapters/**/*.ts",
+    "core/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.ts"
+  ]
 }
