@@ -1,5 +1,7 @@
 import { verifyMessage } from "viem";
 
+export const config = { runtime: "nodejs" };
+
 const GALILEO_CHAIN_ID = 16602;
 const WALLET_AUTH_TTL_MS = 2 * 60_000;
 const CANDIDATE_HASH = "f27d90312829eea02c99774da14dbc7e7cce47907f708b5bb099987d4e1aa110";
