@@ -1,20 +1,3 @@
-import { verifyMessage } from "viem";
-
-export const config = { runtime: "nodejs" };
-
-const GALILEO_CHAIN_ID = 16602;
-const WALLET_AUTH_TTL_MS = 2 * 60_000;
-const CANDIDATE_HASH = "f27d90312829eea02c99774da14dbc7e7cce47907f708b5bb099987d4e1aa110";
-const WALLET_CANDIDATE = {
-  id: "hackathon-gpu-credits-wallet-001",
-  kind: "purchase",
-  target: "0G GPU inference credits",
-  amount: 247,
-  currency: "USD",
-  payload: { units: 10_000, product: "GPU inference credits" },
-};
-const EXPECTED_FIELDS = ["wallet","chainId","candidateId","candidateHash","amount","currency","origin","issuedAtMs","expiresAtMs","nonce"];
-
 function json(value: unknown, status = 200): Response {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
@@ -29,59 +12,6 @@ function safeError(error: unknown): string {
 
 function validAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
-}
-
-function parseAuthorization(message: string): Record<string, string> {
-  const lines = message.split("\n");
-  if (lines.shift() !== "ReceiptGate Wallet Authorization v1") throw new Error("wallet authorization header mismatch");
-  const values: Record<string, string> = {};
-  for (const line of lines) {
-    const index = line.indexOf("=");
-    if (index <= 0) throw new Error("malformed wallet authorization line");
-    const key = line.slice(0, index);
-    if (key in values) throw new Error(`duplicate wallet authorization field: ${key}`);
-    values[key] = line.slice(index + 1);
-  }
-  const keys = Object.keys(values).sort();
-  const expected = [...EXPECTED_FIELDS].sort();
-  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
-    throw new Error("wallet authorization fields mismatch");
-  }
-  return values;
-}
-
-async function verifyAuthorization(address: string, message: string, signature: string, expectedOrigin: string) {
-  if (!validAddress(address)) throw new Error("invalid wallet address");
-  const fields = parseAuthorization(message);
-  const nowMs = Date.now();
-  const issuedAtMs = Number(fields.issuedAtMs);
-  const expiresAtMs = Number(fields.expiresAtMs);
-  const checks = {
-    wallet: validAddress(fields.wallet) && fields.wallet.toLowerCase() === address.toLowerCase(),
-    chain: fields.chainId === String(GALILEO_CHAIN_ID),
-    candidateId: fields.candidateId === WALLET_CANDIDATE.id,
-    candidateHash: fields.candidateHash === CANDIDATE_HASH,
-    amount: fields.amount === String(WALLET_CANDIDATE.amount),
-    currency: fields.currency === WALLET_CANDIDATE.currency,
-    origin: (() => {
-      try { return new URL(fields.origin).origin === new URL(expectedOrigin).origin; } catch { return false; }
-    })(),
-    issuedAt: Number.isSafeInteger(issuedAtMs) && issuedAtMs <= nowMs + 30_000 && issuedAtMs >= nowMs - WALLET_AUTH_TTL_MS,
-    freshness: Number.isSafeInteger(expiresAtMs) && expiresAtMs > nowMs && expiresAtMs - issuedAtMs === WALLET_AUTH_TTL_MS,
-    signature: false,
-  };
-  if (Object.values(checks).slice(0, -1).every(Boolean) && /^0x[0-9a-fA-F]{130}$/.test(signature)) {
-    try {
-      checks.signature = await verifyMessage({
-        address: address as `0x${string}`,
-        message,
-        signature: signature as `0x${string}`,
-      });
-    } catch {
-      checks.signature = false;
-    }
-  }
-  return { ok: Object.values(checks).every(Boolean), address, chainId: GALILEO_CHAIN_ID, checks };
 }
 
 function walletAllowed(address: string): boolean {
@@ -154,6 +84,21 @@ async function runCompute() {
   return { configured: true, live: true, provider: "0g-compute", model, candidate, policy: { allowed: reasons.length === 0, reasons }, proofBoundary: "none-live-compute-only" };
 }
 
+async function verifyWalletAtEdge(request: Request, body: { address: string; message: string; signature: string }) {
+  const verifierUrl = new URL("/api/wallet/verify", request.url);
+  const response = await fetch(verifierUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  let receipt: any = null;
+  try { receipt = await response.json(); } catch { receipt = null; }
+  if (response.status !== 200 || receipt?.ok !== true || receipt?.checks?.signature !== true) {
+    return { ok: false, status: response.status, receipt };
+  }
+  return { ok: true, status: response.status, receipt };
+}
+
 export default {
   async fetch(request: Request) {
     try {
@@ -161,9 +106,26 @@ export default {
       if (!body.address || !body.message || !body.signature) {
         return json({ live: false, authorized: false, error: "wallet authorization required" }, 401);
       }
-      const wallet = await verifyAuthorization(body.address, body.message, body.signature, new URL(request.url).origin);
-      if (!wallet.ok) return json({ live: false, authorized: false, error: "wallet authorization failed", wallet }, 401);
-      if (!walletAllowed(wallet.address)) return json({ live: false, authorized: false, error: "wallet is not admitted to sponsored Compute", wallet: { address: wallet.address, chainId: wallet.chainId } }, 403);
+
+      const verified = await verifyWalletAtEdge(request, {
+        address: body.address,
+        message: body.message,
+        signature: body.signature,
+      });
+      if (!verified.ok) {
+        return json({ live: false, authorized: false, error: "wallet authorization failed", wallet: verified.receipt }, 401);
+      }
+
+      const wallet = verified.receipt;
+      if (!walletAllowed(wallet.address)) {
+        return json({
+          live: false,
+          authorized: false,
+          error: "wallet is not admitted to sponsored Compute",
+          wallet: { address: wallet.address, chainId: wallet.chainId },
+        }, 403);
+      }
+
       const result = await runCompute();
       return json({ ...result, authorized: true, walletAuthorization: wallet });
     } catch (error) {
