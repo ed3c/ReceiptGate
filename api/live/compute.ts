@@ -1,2 +1,6 @@
-import { liveComputeHandler } from "../../demo/vercel";
-export default { fetch: liveComputeHandler };
+export default {
+  async fetch(request: Request) {
+    const mod = await import("../../demo/vercel.ts");
+    return mod.liveComputeHandler(request);
+  },
+};
