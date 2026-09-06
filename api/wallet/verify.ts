@@ -1,6 +1,6 @@
 import { verifyMessage } from "viem";
 
-export const config = { runtime: "nodejs" };
+export const config = { runtime: "edge" };
 
 const GALILEO_CHAIN_ID = 16602;
 const WALLET_AUTH_TTL_MS = 2 * 60_000;
