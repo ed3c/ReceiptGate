@@ -11,7 +11,7 @@ cleanup(){ kill "$SERVER_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
 for _ in $(seq 1 40); do
-  if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then break; fi
+  if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
 curl -fsS "http://127.0.0.1:${PORT}/healthz"
