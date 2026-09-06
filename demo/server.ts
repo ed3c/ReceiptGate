@@ -1,19 +1,16 @@
 import { runFixtureScenario } from "./fixture";
 import { liveAgentEvidence, liveComputeEvidence } from "./live";
-import {
-  createWalletChallenge,
-  GALILEO_CHAIN_HEX,
-  GALILEO_CHAIN_ID,
-  GALILEO_EXPLORER,
-  GALILEO_RPC_URL,
-  verifyWalletAuthorization,
-  walletAllowed,
-} from "./wallet";
+import walletChallengeApi from "../api/wallet/challenge";
+import walletVerifyApi from "../api/wallet/verify";
 
 if (process.env.GITHUB_ACTIONS === "true" && process.env.PRIVATE_KEY?.trim()) {
   throw new Error("PRIVATE_KEY must not enter the judge-demo GitHub Actions runtime");
 }
 
+const GALILEO_CHAIN_ID = 16602;
+const GALILEO_CHAIN_HEX = "0x40da";
+const GALILEO_RPC_URL = "https://evmrpc-testnet.0g.ai";
+const GALILEO_EXPLORER = "https://chainscan-galileo.0g.ai";
 const port = Number(process.env.DEMO_PORT ?? 3000);
 const html = await Bun.file(new URL("./index.html", import.meta.url)).text();
 
@@ -29,8 +26,29 @@ function safeError(error: unknown): string {
     .slice(0, 400);
 }
 
-function requestOrigin(request: Request): string {
-  return new URL(request.url).origin;
+function validAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+function walletAllowed(address: string): boolean {
+  const configured = process.env.DEMO_ALLOWED_WALLETS?.trim();
+  if (!configured) return true;
+  return configured
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => validAddress(value))
+    .includes(address.toLowerCase());
+}
+
+async function verifyWallet(request: Request, body: { address: string; message: string; signature: string }) {
+  const verificationRequest = new Request(new URL("/api/wallet/verify", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const response = await walletVerifyApi.fetch(verificationRequest);
+  const receipt = await response.json() as any;
+  return { response, receipt };
 }
 
 const server = Bun.serve({
@@ -65,34 +83,22 @@ const server = Bun.serve({
         return json(await runFixtureScenario(body.tamper === true));
       }
       if (request.method === "GET" && url.pathname === "/api/wallet/challenge") {
-        const address = url.searchParams.get("address") ?? "";
-        return json(createWalletChallenge(address, requestOrigin(request)));
+        return walletChallengeApi.fetch(request);
       }
       if (request.method === "POST" && url.pathname === "/api/wallet/verify") {
-        const body = await request.json().catch(() => ({})) as { address?: string; message?: string; signature?: string };
-        if (!body.address || !body.message || !body.signature) {
-          return json({ error: "address, message and signature are required" }, 400);
-        }
-        const receipt = await verifyWalletAuthorization({
-          address: body.address,
-          message: body.message,
-          signature: body.signature,
-          expectedOrigin: requestOrigin(request),
-        });
-        return json(receipt, receipt.ok ? 200 : 401);
+        return walletVerifyApi.fetch(request);
       }
       if (request.method === "POST" && url.pathname === "/api/live/compute") {
         const body = await request.json().catch(() => ({})) as { address?: string; message?: string; signature?: string };
         if (!body.address || !body.message || !body.signature) {
           return json({ live: false, authorized: false, error: "wallet authorization required" }, 401);
         }
-        const wallet = await verifyWalletAuthorization({
+        const { response, receipt: wallet } = await verifyWallet(request, {
           address: body.address,
           message: body.message,
           signature: body.signature,
-          expectedOrigin: requestOrigin(request),
         });
-        if (!wallet.ok) {
+        if (response.status !== 200 || wallet?.ok !== true || wallet?.checks?.signature !== true) {
           return json({ live: false, authorized: false, error: "wallet authorization failed", wallet }, 401);
         }
         if (!walletAllowed(wallet.address)) {
@@ -111,6 +117,7 @@ const server = Bun.serve({
             address: wallet.address,
             chainId: wallet.chainId,
             checks: wallet.checks,
+            verificationTransport: wallet.verificationTransport,
           },
         });
       }
