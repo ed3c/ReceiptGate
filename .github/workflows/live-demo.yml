@@ -1,0 +1,122 @@
+name: live-demo
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/live-demo.yml'
+      - 'scripts/live-demo.sh'
+      - 'scripts/cleanup-demo-secret.sh'
+      - 'docs/prompts/atom-008-live-launch.md'
+  workflow_dispatch:
+    inputs:
+      service_url:
+        description: 'Provisioned 0G Compute service URL'
+        required: true
+        type: string
+      model:
+        description: 'Provisioned 0G Compute model id'
+        required: true
+        type: string
+      agent_url:
+        description: 'Fresh running Agentic ID base URL'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  shape:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Validate launcher shell and fixture readiness without secrets
+        run: |
+          bash -n scripts/live-demo.sh scripts/cleanup-demo-secret.sh
+          bun run demo:doctor fixture
+      - name: Assert wallet private key is not a live workflow input
+        run: |
+          ! grep -q 'secrets\.PRIVATE_KEY' .github/workflows/live-demo.yml
+          ! grep -q 'PRIVATE_KEY:' .github/workflows/live-demo.yml
+
+  live:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      DEMO_PORT: 3220
+      ZG_SERVICE_URL: ${{ inputs.service_url }}
+      ZG_MODEL: ${{ inputs.model }}
+      RECEIPTGATE_AGENT_URL: ${{ inputs.agent_url }}
+      ZG_API_SECRET: ${{ secrets.ZG_API_SECRET }}
+      ZERO_G_ATTESTOR_URL: https://agenticid.0g.ai
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install pinned runtime dependencies
+        run: bun install
+      - name: Assert runtime credential boundary
+        run: |
+          test -z "${PRIVATE_KEY:-}"
+          test -n "$ZG_API_SECRET"
+          case "$ZG_API_SECRET" in app-sk-*) ;; *) echo 'ZG_API_SECRET does not have app-sk-* shape' >&2; exit 2;; esac
+      - name: Exercise combined live + tamper demo over HTTP
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          bun run demo:serve > artifacts/live-demo-server.log 2>&1 &
+          PID=$!
+          cleanup(){ kill "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${DEMO_PORT}/healthz" >/dev/null 2>&1; then break; fi
+            sleep 0.1
+          done
+          curl -fsS -X POST -H 'content-type: application/json' -d '{"tamper":false}' "http://127.0.0.1:${DEMO_PORT}/api/demo" > artifacts/live-fixture-normal.json
+          curl -fsS -X POST -H 'content-type: application/json' -d '{"tamper":true}' "http://127.0.0.1:${DEMO_PORT}/api/demo" > artifacts/live-fixture-tamper.json
+          curl -fsS -X POST "http://127.0.0.1:${DEMO_PORT}/api/live/compute" > artifacts/live-compute.json
+          curl -fsS "http://127.0.0.1:${DEMO_PORT}/api/live/agent" > artifacts/live-agent.json
+          bun -e '
+          const normal=await Bun.file("artifacts/live-fixture-normal.json").json();
+          const tamper=await Bun.file("artifacts/live-fixture-tamper.json").json();
+          const compute=await Bun.file("artifacts/live-compute.json").json();
+          const agent=await Bun.file("artifacts/live-agent.json").json();
+          if(normal.receipt?.execution?.status!=="executed"||normal.sideEffectCalls!==1) throw new Error("fixture normal failed");
+          if(tamper.receipt?.execution?.status!=="blocked"||tamper.sideEffectCalls!==0||tamper.receipt?.verification?.checks?.candidateBinding!==false) throw new Error("fixture tamper failed");
+          if(compute.live!==true||compute.provider!=="0g-compute"||compute.policy?.allowed!==true||compute.proofBoundary!=="none-live-compute-only") throw new Error(`live Compute failed: ${compute.error??compute.reason??"unknown"}`);
+          if(agent.live!==true||agent.verification?.ok!==true||agent.verification?.signerMatches!==true||agent.verification?.notExpired!==true||agent.verification?.dataOnChain!==true) throw new Error(`live Agentic ID failed: ${agent.error??agent.reason??"unknown"}`);
+          const receipt={schema:"receiptgate-combined-live-demo-v1",accepted:true,commit:process.env.TARGET_SHA,fixture:{normal:normal.receipt.execution.status,tamper:tamper.receipt.execution.status,tamperCandidateBinding:tamper.receipt.verification.checks.candidateBinding},compute:{live:compute.live,provider:compute.provider,model:compute.model,amount:compute.candidate?.amount,policyAllowed:compute.policy?.allowed,proofBoundary:compute.proofBoundary},agent:{live:agent.live,agentId:agent.agentId,serviceCount:agent.serviceCount,verification:agent.verification,proofBoundary:agent.proofBoundary},generatedAt:new Date().toISOString()};
+          await Bun.write("artifacts/combined-live-demo.json",JSON.stringify(receipt,null,2)+"\n"); console.log(JSON.stringify(receipt));'
+          cat artifacts/combined-live-demo.json
+      - name: Retain combined live evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-live-demo-${{ env.TARGET_SHA }}
+          path: |
+            artifacts/combined-live-demo.json
+            artifacts/live-fixture-normal.json
+            artifacts/live-fixture-tamper.json
+            artifacts/live-compute.json
+            artifacts/live-agent.json
+            artifacts/live-demo-server.log
+          if-no-files-found: warn
+          retention-days: 7

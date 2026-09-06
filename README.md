@@ -27,6 +27,112 @@ Agent / provider evidence        |
             execute()       BLOCK
 ```
 
+## Judge demo
+
+The one-screen Bun demo has a guaranteed, cloud-proven gate path and separately labeled live 0G evidence panels.
+
+```bash
+./scripts/demo.sh fixture
+# open http://localhost:3000
+```
+
+Buttons:
+
+- **Run verified purchase**: `$247`, proof binding PASS, policy `<= $300` PASS, mock side effect executes once.
+- **Tamper $247 -> $2,470**: the proof remains bound to `$247`, candidate binding fails, side effect stays zero.
+- **Run live inference**: calls provisioned 0G Compute when configured; explicitly labeled `none-live-compute-only`.
+- **Verify signed /hello**: verifies a freshly running Agentic ID via the official SDK without a wallet key.
+
+The `demo-smoke` GitHub Action starts the real HTTP server on the exact candidate SHA and exercises both normal and tamper routes before merge.
+
+## Private key / secret boundary
+
+**Never commit `PRIVATE_KEY`. Do not use it in normal demo runtime.** It is needed only for one-time local Agentic ID provisioning. `.env`, key files and `secrets/` are gitignored.
+
+The intended split is:
+
+```text
+local provisioning                GitHub / judge runtime
+------------------                ----------------------
+PRIVATE_KEY        ── never ──X→  repository / workflow
+wallet signing                    ZG_API_SECRET (app-sk-*)
+funding                           public service URL/model
+Agentic ID deploy                 public Agentic ID URL
+```
+
+`ZG_API_SECRET` is a shorter-lived provider credential and may be stored in GitHub Actions secret storage for the event. `scripts/cleanup-demo-secret.sh` deletes it afterward.
+
+## Complete live-demo runbook
+
+Use a dedicated low-fund demo wallet. The unavoidable manual boundary is wallet/CLI authentication and copying the generated `app-sk-*` into your local environment. Everything after that is scripted.
+
+### 1. Provision 0G Compute locally
+
+```bash
+cp .env.example .env
+export ZG_PROVIDER_ADDRESS=<provider-address>
+export ZG_DEPOSIT_AMOUNT=3
+export ZG_PROVIDER_FUND_AMOUNT=1
+bun run provision:compute
+```
+
+The official CLI performs network setup/login, funding, provider acknowledgement, model listing and `get-secret`. Copy the printed `app-sk-*` only into the shell:
+
+```bash
+export ZG_API_SECRET='app-sk-...'
+export ZG_SERVICE_URL='<provider service URL>'
+export ZG_MODEL='<model id>'
+```
+
+Do not write the secret into the repository.
+
+### 2. Provision one running Agentic ID locally
+
+The sealed runtime needs its inference API key. Reuse the short-lived Compute secret for the demo unless the provider gives you a separate agent runtime key:
+
+```bash
+export PRIVATE_KEY='0x...dedicated-demo-wallet-key...'
+export AGENT_API_KEY="$ZG_API_SECRET"
+export ZG_AGENT_MODEL="$ZG_MODEL"
+bun run provision:agentic-id
+```
+
+The script waits for `running`, verifies signed `/hello`, and writes only public/non-secret data to `artifacts/agentic-id-provision.json`.
+
+Then remove wallet material from runtime:
+
+```bash
+unset PRIVATE_KEY AGENT_API_KEY
+export RECEIPTGATE_AGENT_URL="$(bun -e 'const r=await Bun.file("artifacts/agentic-id-provision.json").json();process.stdout.write(r.url)')"
+```
+
+### 3. Run the local judge UI in full live mode
+
+```bash
+./scripts/demo.sh live
+```
+
+Open `http://localhost:3000`. The guaranteed normal/tamper gate is available even if a live provider later becomes unavailable; live panels remain separately labeled.
+
+### 4. Push the runtime secret and execute the combined GitHub live canary
+
+```bash
+./scripts/live-demo.sh
+```
+
+This command does not print the secret. It:
+
+1. pipes `ZG_API_SECRET` to `gh secret set`;
+2. dispatches `live-demo.yml` on `main` with only non-secret URL/model inputs;
+3. watches the run until completion;
+4. leaves an exact-head combined artifact containing live Compute, signed Agentic ID, normal gate and tamper-gate evidence.
+
+After judging:
+
+```bash
+./scripts/cleanup-demo-secret.sh
+```
+
 ## Physical evidence already landed
 
 The exact-head GitHub Actions path proves the fail-closed core on Bun:
@@ -51,79 +157,13 @@ bun run acceptance
 
 A model is still allowed to propose an amount above budget. The deterministic ReceiptGate policy owns that decision and blocks it. The planted control verifies `$301 > $300` leaves side-effect count at zero.
 
-```text
-0G Compute
-    |
-strict JSON
-    |
-CandidateAction ($301 is still a valid proposal)
-    |
-ReceiptGate policy: max $300
-    |
-   BLOCK
-```
-
-### Fast live runtime path
-
-Provision once using the official 0G Compute CLI, then keep wallet material out of inference runtime:
-
-```bash
-0g-compute-cli setup-network
-0g-compute-cli login
-0g-compute-cli deposit --amount 3
-0g-compute-cli inference list-providers
-0g-compute-cli transfer-fund --provider <PROVIDER> --amount 1
-0g-compute-cli inference acknowledge-provider --provider <PROVIDER>
-0g-compute-cli inference get-secret --provider <PROVIDER>
-```
-
-Store only the generated `app-sk-*` value as the GitHub secret `ZG_API_SECRET`. The manual `0g-compute-live` workflow accepts the non-secret service URL and model id and performs one bounded live inference.
-
-Its receipt is deliberately labeled:
-
-```text
-proofBoundary = none-live-compute-only
-```
-
-A live Compute response is **not** an Agentic ID ServeProof.
+A successful live Compute receipt is deliberately labeled `proofBoundary = none-live-compute-only`; it is not an Agentic ID ServeProof.
 
 ## 0G Agentic ID adapter
 
-ReceiptGate joins two proof facts:
+ReceiptGate joins official `verifyProof()` (signer identity, expiry, on-chain data roots) with the sealed-proxy transcript `taskHash` and deterministic candidate extraction. The adapter unit oracle mocks the official SDK result only for composition tests; live provider proof is kept separate.
 
-1. official `@0gfoundation/0g-agenticid-sdk` `verifyProof()` for signer identity, expiry, and on-chain data roots;
-2. recomputed 0G sealed-proxy `taskHash` for exact request/response transcript integrity.
-
-The gate candidate is extracted from the taskHash-covered response body. ReceiptGate does not trust a separate unsigned candidate hash.
-
-```text
-X-Agent-Proof / ServeProof
-        |
-        +--> official SDK verifyProof ---- signer / deadline / data roots
-        |
-HTTP transcript
-        +--> recompute taskHash ---------- request / response bytes
-        |
-response body
-        +--> extract candidate ----------- exact action to authorize
-                         |
-                         v
-                    ReceiptGate
-```
-
-Run all current 0G adapter controls:
-
-```bash
-bun install
-bun run test:0g
-bun run probe:0g-sdk
-```
-
-### Live Agentic ID canary
-
-`0g-live-proof` is manual because provider availability is external. It can accept an explicit newly provisioned Agent URL, or fall back to public deployment discovery.
-
-The first physical public probe observed 32 models and 78 deployments, but no `running` deployment produced a valid signed `/hello`; the workflow remained RED and retained that availability receipt. Issue #7 stays open until a real ServeProof passes.
+The public discovery probe previously observed 32 models and 78 deployments but no running public agent with a valid signed `/hello`; that RED availability receipt was retained. Issue #7 remains open until a freshly provisioned live agent passes.
 
 ## Agent context route
 
@@ -135,25 +175,18 @@ AGENTS.md
 
 `docs/plans/` is N-class planning. `docs/prompts/` is P-class guidance. Neither is correctness authority.
 
-## Hackathon demo target
+## Hackathon proof story
 
 ```text
-0G Compute proposes $247 purchase
- -> Agentic ID signed service binds the candidate
- -> official proof + transcript binding PASS
- -> policy <= $300 PASS
- -> EXECUTED
-
-Tamper signed response / candidate
- -> transcript or candidate binding FAIL
- -> BLOCKED
-
-or
-
-0G Compute proposes $301
- -> proof may still PASS
- -> deterministic budget policy FAIL
- -> BLOCKED
+0G Compute proposes
+       ↓
+CandidateAction
+       ↓
+Agentic ID / provider proof + transcript binding
+       ↓
+ReceiptGate deterministic policy
+       ↓
+EXECUTE or BLOCK
 ```
 
-Shortest remaining path: provision one running 0G Agent + one live Compute API secret -> pass both manual canaries -> build one-screen Tamper demo -> optional second Agent.
+For the judge demo, live Compute and live Agentic ID are shown as separate provider evidence until a signed application `/api/*` service binds the procurement candidate end-to-end. The UI never upgrades that non-claim into a live proof.
