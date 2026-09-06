@@ -1,2 +1,6 @@
-import { demoHandler } from "../demo/vercel";
-export default { fetch: demoHandler };
+export default {
+  async fetch(request: Request) {
+    const mod = await import("../demo/vercel.ts");
+    return mod.demoHandler(request);
+  },
+};
