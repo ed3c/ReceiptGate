@@ -1,2 +1,6 @@
 import { walletVerifyHandler } from "../../demo/vercel";
-export default { fetch: walletVerifyHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: walletVerifyHandler,
+});
