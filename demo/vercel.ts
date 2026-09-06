@@ -37,7 +37,6 @@ export async function configHandler() {
       rpcUrl: GALILEO_RPC_URL,
       nativeCurrency: { name: "0G", symbol: "0G", decimals: 18 },
     },
-    privateKeyInRuntime: Boolean(process.env.PRIVATE_KEY?.trim()),
   });
 }
 
