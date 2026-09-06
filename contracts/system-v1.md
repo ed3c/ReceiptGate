@@ -50,8 +50,11 @@ The core does not decide whether 0G, another TEE provider, or a local test fixtu
 | deterministic policy decision | `core/policy.ts` |
 | side-effect reachability | `core/gate.ts` |
 | execution receipt schema | `core/receipt.ts` |
-| positive/negative oracle | `tests/gate.test.ts` |
-| cloud runtime witness | `.github/workflows/acceptance.yml` |
+| 0G transcript taskHash | `adapters/0g/taskHash.ts` |
+| 0G SDK/result composition | `adapters/0g/verifier.ts` |
+| core positive/negative oracle | `tests/gate.test.ts` |
+| 0G adapter oracle | `tests/0g-verifier.test.ts` |
+| cloud runtime witness | `.github/workflows/*.yml` |
 
 No adapter may call the side effect directly.
 
@@ -59,68 +62,78 @@ No adapter may call the side effect directly.
 
 A verifier receives both the proof and the exact normalized candidate. A PASS means the adapter has established whatever provider-specific binding it claims between those two values. ReceiptGate never infers binding from an agent name, model output, screenshot, text explanation, or reputation score.
 
-For test fixtures, `candidateHash` is a SHA-256 hash over canonical candidate JSON. That fixture proves ReceiptGate wiring and tamper blocking only; it is not a substitute for a 0G signature or TEE attestation.
+The fixture verifier uses `candidateHash` only to prove core wiring. The 0G verifier deliberately ignores that generic field: its candidate is extracted from the response body covered by the 0G taskHash, then compared deterministically with the candidate presented to the gate.
 
 ## 5. Policy
 
 Policy evaluation is deterministic and has no network access. v1 supports a small explicit policy object rather than a policy DSL. The same candidate + policy input MUST produce the same decision.
 
-The first policy surface supports:
-
-- maximum amount;
-- optional allowed action kinds.
-
-Unknown/invalid numeric values deny.
+The first policy surface supports maximum amount and optional allowed action kinds. Unknown/invalid numeric values deny.
 
 ## 6. Receipt
 
-Every gate call returns an `ExecutionReceipt` containing:
+Every gate call returns an `ExecutionReceipt` containing the candidate id/hash, normalized verification result, normalized policy decision, execution-attempt flag, and final status (`blocked`, `executed`, or `execution_failed`).
 
-- candidate id/hash;
-- normalized verification result;
-- normalized policy decision;
-- whether execution was attempted;
-- final status (`blocked`, `executed`, or `execution_failed`).
+A ReceiptGate receipt records what ReceiptGate observed. It is not itself a provider attestation.
 
-A receipt records what ReceiptGate observed. It is not itself a provider attestation.
+## 7. 0G Agentic ID proof boundary
 
-## 7. 0G adapter boundary
+0G's official TypeScript SDK exposes `ag.reputation.verifyProof(serveProof)`. The upstream implementation checks:
 
-The next atom will translate the official 0G Agentic ID / `X-Agent-Proof` verification result into `VerificationResult`. The adapter must use the official SDK/runtime verification path when available and must not reimplement cryptography merely for demo aesthetics.
+- proof deadline has not passed;
+- signature resolves to the on-chain `agentSeal` for the Agentic ID;
+- every declared `dataHash` is present in that Agentic ID's on-chain intelligent data.
 
-A future 0G-backed PASS may claim only what the exercised 0G verifier actually proves. Compute verification, Agentic ID identity/state binding, response-body binding, and TEE execution are separate claims unless one exercised upstream primitive explicitly joins them.
+That call does **not** receive the HTTP response body, so ReceiptGate must not equate SDK `ok` with response-body integrity.
+
+The sealed 0G proxy publishes the transcript binding separately as `taskHash`:
+
+```text
+keccak256(
+  method || requestURI ||
+  keccak256(requestBody) ||
+  keccak256(responseBody) ||
+  decimal(statusCode)
+)
+```
+
+ReceiptGate's 0G PASS therefore requires both:
+
+```text
+official verifyProof(serveProof) == PASS
+AND
+recomputed transcript taskHash == serveProof.taskHash
+AND
+candidate extracted from that responseBody == gate candidate
+```
+
+Signature recovery/on-chain identity verification remains in the official SDK. ReceiptGate mirrors only the published transcript-hash formula needed to join the proof to bytes it is authorizing.
 
 ## 8. Evidence tiers
 
 - P: prompts/reasoning may guide work.
 - N: plan/README/diagram may describe work.
-- L: `bun run acceptance` plus planted negatives proves core behavior in that runtime.
-- R: GitHub Actions executing the exact commit and retaining `runtime-receipt.json` proves the cloud runner exercised that candidate.
+- L: Bun tests plus planted negatives prove behavior in that runtime.
+- R: GitHub Actions executing the exact candidate/ref and retaining a receipt artifact proves the cloud runner exercised it.
 
-A green GitHub workflow does not prove real 0G verification until the 0G adapter atom runs real provider evidence.
+Mocked SDK results in the 0G adapter oracle prove composition only. They do not prove a live 0G chain, agentSeal, TEE, or deployed Agentic ID. Those require a separate live provider probe.
 
-## 9. Non-goals for Hackathon slice 1
+## 9. Non-goals before a concrete atom
 
-Do not add before a concrete atom needs them:
-
-- database;
-- generalized workflow engine;
-- multi-chain abstraction;
-- payment settlement;
-- policy DSL;
-- generic MCP proxy;
-- agent scheduler;
-- custom cryptographic primitives;
-- production authentication/authorization UI.
+Do not add a database, generalized workflow engine, multi-chain abstraction, payment settlement, policy DSL, generic MCP proxy, agent scheduler, custom signature implementation, or production auth UI.
 
 ## 10. Acceptance
 
-The nearest executable contract is `tests/gate.test.ts`.
-
-Required command:
+Core oracle:
 
 ```bash
 bun run acceptance
 ```
 
-Required planted negatives prove that invalid proof, candidate tampering, verifier outage, and policy denial all keep the side-effect callback at call count zero.
+0G adapter oracle (after dependency install):
+
+```bash
+bun run test:0g
+```
+
+Required planted negatives keep side-effect call count at zero for invalid proof, candidate tampering, verifier outage, and policy denial.

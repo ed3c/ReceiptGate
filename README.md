@@ -21,13 +21,9 @@ Agent / provider evidence
  execute()     BLOCK
 ```
 
-## Why this shape
+## Physical evidence already landed
 
-Agent systems increasingly call tools that spend money, mutate infrastructure, merge code, deploy software, or modify customer data. ReceiptGate does not ask another model whether an action "looks safe". It creates one mechanical boundary before the side effect.
-
-## Current physical evidence
-
-Atom #1 exercises five controls in `tests/gate.test.ts`:
+Atom #1 is cloud-proven on GitHub-hosted Bun. `tests/gate.test.ts` proves:
 
 - valid proof + allowed policy -> execute exactly once;
 - invalid proof -> zero executions;
@@ -35,23 +31,49 @@ Atom #1 exercises five controls in `tests/gate.test.ts`:
 - verifier outage -> zero executions;
 - policy denial -> zero executions.
 
-Run:
+Run the zero-dependency core path:
 
 ```bash
 bun run acceptance
 ```
 
-GitHub Actions runs the same path and retains `artifacts/runtime-receipt.json` for the exact commit.
+## 0G Agentic ID adapter
 
-## Important claim boundary
+Atom #3 joins the two proof facts that the product actually needs:
 
-The current fixture verifier is deliberately named `fixture-only-not-0g`. It proves the ReceiptGate wiring and fail-closed behavior; it **does not** prove a real 0G signature, TEE execution, chain state, or Agentic ID identity.
+1. official `@0gfoundation/0g-agenticid-sdk` `verifyProof()` for signer identity, expiry, and on-chain data roots;
+2. recomputed 0G sealed-proxy `taskHash` for exact request/response transcript integrity.
 
-The next atom replaces that fixture boundary with an adapter that consumes the official 0G Agentic ID / `X-Agent-Proof` verification path.
+The gate candidate is extracted from the taskHash-covered response body. ReceiptGate does not trust a separate unsigned candidate hash.
+
+```text
+X-Agent-Proof / ServeProof
+        |
+        +--> official SDK verifyProof ---- signer / deadline / data roots
+        |
+HTTP transcript
+        +--> recompute taskHash ---------- request / response bytes
+        |
+response body
+        +--> extract candidate ----------- exact action to authorize
+                         |
+                         v
+                    ReceiptGate
+```
+
+Install and run the adapter oracle:
+
+```bash
+bun install
+bun run test:0g
+bun run probe:0g-sdk
+```
+
+### Claim boundary
+
+The adapter unit oracle mocks the official SDK result to prove composition and tamper blocking. Its path-scoped GitHub Action also proves that the pinned official SDK imports successfully on the cloud runner. A **live 0G provider probe is still required** before claiming a real Agentic ID/agentSeal/chain/TEE verification.
 
 ## Agent context route
-
-Repository context is limited to three required nodes:
 
 ```text
 AGENTS.md
@@ -65,13 +87,13 @@ AGENTS.md
 
 ```text
 $247 autonomous purchase
- -> proof PASS
+ -> 0G proof PASS
  -> policy <= $300 PASS
  -> EXECUTED
 
-Tamper $247 -> $2,470
- -> proof/candidate binding FAIL
+Tamper signed response / candidate
+ -> transcript or candidate binding FAIL
  -> BLOCKED
 ```
 
-After the core boundary is cloud-proven, the shortest path is real 0G proof -> 0G Compute decision -> one-screen Tamper demo -> optional second agent.
+Shortest remaining path: live 0G proof -> 0G Compute decision -> one-screen Tamper demo -> optional second agent.

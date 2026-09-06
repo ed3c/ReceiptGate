@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "acceptance": "bun test && bun run scripts/runtime-receipt.ts"
+    "acceptance": "bun test tests/gate.test.ts && bun run scripts/runtime-receipt.ts",
+    "test:0g": "bun test tests/0g-verifier.test.ts",
+    "probe:0g-sdk": "bun run adapters/0g/sdk-smoke.ts"
+  },
+  "dependencies": {
+    "@0gfoundation/0g-agenticid-sdk": "0.1.2",
+    "viem": "2.21.0"
   }
 }
