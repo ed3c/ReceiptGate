@@ -1,0 +1,35 @@
+name: acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Run exact acceptance path
+        run: bun run acceptance
+      - name: Show runtime receipt
+        run: cat artifacts/runtime-receipt.json
+      - name: Retain cloud runtime receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-runtime-${{ github.sha }}
+          path: artifacts/runtime-receipt.json
+          if-no-files-found: error
+          retention-days: 7

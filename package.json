@@ -1,0 +1,10 @@
+{
+  "name": "receiptgate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "acceptance": "bun test && bun run scripts/runtime-receipt.ts"
+  }
+}
