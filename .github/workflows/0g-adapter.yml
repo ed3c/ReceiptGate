@@ -28,8 +28,14 @@ jobs:
   verify-0g-adapter:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -42,12 +48,12 @@ jobs:
       - name: Write cloud receipt
         run: |
           mkdir -p artifacts
-          printf '{"schema":"receiptgate-0g-adapter-runtime-v1","accepted":true,"commit":"%s","runner":"github-actions"}\n' "$GITHUB_SHA" > artifacts/0g-adapter-runtime.json
+          printf '{"schema":"receiptgate-0g-adapter-runtime-v1","accepted":true,"commit":"%s","runner":"github-actions"}\n' "$TARGET_SHA" > artifacts/0g-adapter-runtime.json
           cat artifacts/0g-adapter-runtime.json
       - name: Retain adapter runtime receipt
         uses: actions/upload-artifact@v4
         with:
-          name: receiptgate-0g-adapter-${{ github.sha }}
+          name: receiptgate-0g-adapter-${{ env.TARGET_SHA }}
           path: artifacts/0g-adapter-runtime.json
           if-no-files-found: error
           retention-days: 7
