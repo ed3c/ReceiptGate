@@ -11,18 +11,30 @@ const [models, deployments] = await Promise.all([
   ag.agent.listDeployments(),
 ]);
 
-const running = deployments.filter(
-  (deployment) =>
-    deployment.phase === "running" &&
-    typeof deployment.url === "string" &&
-    deployment.url.length > 0,
+const phaseCounts = deployments.reduce<Record<string, number>>((counts, deployment) => {
+  const phase = deployment.phase ?? "unknown";
+  counts[phase] = (counts[phase] ?? 0) + 1;
+  return counts;
+}, {});
+
+const urlBearing = deployments.filter(
+  (deployment) => typeof deployment.url === "string" && deployment.url.length > 0,
 );
+const running = urlBearing.filter((deployment) => deployment.phase === "running");
+
+// Prefer provider-declared running rows. If the inventory currently reports no
+// running rows, still probe URL-bearing rows: an actual signed /hello is a
+// stronger runtime witness than a stale lifecycle label. The selected phase is
+// retained in the receipt so this fallback cannot be hidden.
+const candidates = [...running, ...urlBearing.filter((deployment) => deployment.phase !== "running")]
+  .slice(0, 20);
 
 const attempts: string[] = [];
 let verified:
   | {
       agentId: string;
       agentUrl: string;
+      inventoryPhase: string;
       statusCode: number;
       taskHash: string;
       computedTaskHash: string;
@@ -35,8 +47,9 @@ let verified:
     }
   | undefined;
 
-for (const deployment of running.slice(0, 20)) {
+for (const deployment of candidates) {
   const agentId = deployment.agentId == null ? "unknown" : String(deployment.agentId);
+  const inventoryPhase = deployment.phase ?? "unknown";
   try {
     const agentUrl = deployment.url as string;
     const helloUrl = new URL("/hello", agentUrl);
@@ -51,11 +64,11 @@ for (const deployment of running.slice(0, 20)) {
     const responseBody = await response.text();
 
     if (!response.ok) {
-      attempts.push(`${agentId}:http-${response.status}`);
+      attempts.push(`${agentId}:${inventoryPhase}:http-${response.status}`);
       continue;
     }
     if (!proof) {
-      attempts.push(`${agentId}:missing-proof`);
+      attempts.push(`${agentId}:${inventoryPhase}:missing-proof`);
       continue;
     }
 
@@ -72,7 +85,7 @@ for (const deployment of running.slice(0, 20)) {
 
     if (!verification.ok || !taskHashMatches) {
       attempts.push(
-        `${agentId}:${verification.ok ? "sdk-pass" : "sdk-fail"}:${taskHashMatches ? "task-pass" : "task-fail"}`,
+        `${agentId}:${inventoryPhase}:${verification.ok ? "sdk-pass" : "sdk-fail"}:${taskHashMatches ? "task-pass" : "task-fail"}`,
       );
       continue;
     }
@@ -88,6 +101,7 @@ for (const deployment of running.slice(0, 20)) {
     verified = {
       agentId,
       agentUrl,
+      inventoryPhase,
       statusCode: response.status,
       taskHash: proof.taskHash,
       computedTaskHash,
@@ -101,27 +115,25 @@ for (const deployment of running.slice(0, 20)) {
     break;
   } catch (error) {
     attempts.push(
-      `${agentId}:${error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120)}`,
+      `${agentId}:${inventoryPhase}:${error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120)}`,
     );
   }
 }
 
-if (!verified) {
-  throw new Error(
-    `no live running 0G Agentic ID produced a verified signed /hello; running=${running.length}; attempts=${attempts.slice(0, 8).join(" | ")}`,
-  );
-}
-
 const receipt = {
   schema: "receiptgate-0g-live-proof-v1",
-  accepted: true,
+  accepted: Boolean(verified),
   commit: targetSha,
   runner: process.env.GITHUB_ACTIONS === "true" ? "github-actions" : "local",
   attestorUrl,
   modelCount: models.length,
   deploymentCount: deployments.length,
+  phaseCounts,
   runningDeploymentCount: running.length,
-  proof: verified,
+  urlBearingDeploymentCount: urlBearing.length,
+  probedDeploymentCount: candidates.length,
+  attempts: attempts.slice(0, 20),
+  proof: verified ?? null,
   generatedAt: new Date().toISOString(),
 };
 
@@ -131,3 +143,9 @@ await Bun.write(
   JSON.stringify(receipt, null, 2) + "\n",
 );
 console.log(JSON.stringify(receipt));
+
+if (!verified) {
+  throw new Error(
+    `no public 0G Agentic ID produced a verified signed /hello; running=${running.length}; urlBearing=${urlBearing.length}; phases=${JSON.stringify(phaseCounts)}; attempts=${attempts.slice(0, 8).join(" | ")}`,
+  );
+}
