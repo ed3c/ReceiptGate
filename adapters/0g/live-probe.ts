@@ -3,6 +3,7 @@ import { AgenticID } from "@0gfoundation/0g-agenticid-sdk";
 import { computeZeroGTaskHash } from "./taskHash";
 
 const attestorUrl = process.env.ZERO_G_ATTESTOR_URL ?? "https://agenticid.0g.ai";
+const explicitAgentUrl = process.env.ZERO_G_AGENT_URL?.trim() || undefined;
 const targetSha = process.env.TARGET_SHA ?? process.env.GITHUB_SHA ?? "local";
 
 const ag = await AgenticID.fromAttestor(attestorUrl);
@@ -22,12 +23,30 @@ const urlBearing = deployments.filter(
 );
 const running = urlBearing.filter((deployment) => deployment.phase === "running");
 
-// Prefer provider-declared running rows. If the inventory currently reports no
-// running rows, still probe URL-bearing rows: an actual signed /hello is a
-// stronger runtime witness than a stale lifecycle label. The selected phase is
-// retained in the receipt so this fallback cannot be hidden.
-const candidates = [...running, ...urlBearing.filter((deployment) => deployment.phase !== "running")]
-  .slice(0, 20);
+type ProbeCandidate = {
+  agentId: string;
+  url: string;
+  phase: string;
+};
+
+const discovered: ProbeCandidate[] = [
+  ...running,
+  ...urlBearing.filter((deployment) => deployment.phase !== "running"),
+].map((deployment) => ({
+  agentId: deployment.agentId == null ? "unknown" : String(deployment.agentId),
+  url: deployment.url as string,
+  phase: deployment.phase ?? "unknown",
+}));
+
+// An explicit URL from workflow_dispatch is always attempted first. This is the
+// shortest Hackathon path after provisioning our own running agent. Public
+// inventory discovery remains the zero-input fallback.
+const candidates: ProbeCandidate[] = [
+  ...(explicitAgentUrl
+    ? [{ agentId: "from-proof", url: explicitAgentUrl, phase: "explicit-url" }]
+    : []),
+  ...discovered.filter((deployment) => deployment.url !== explicitAgentUrl),
+].slice(0, 20);
 
 const attempts: string[] = [];
 let verified:
@@ -47,12 +66,11 @@ let verified:
     }
   | undefined;
 
-for (const deployment of candidates) {
-  const agentId = deployment.agentId == null ? "unknown" : String(deployment.agentId);
-  const inventoryPhase = deployment.phase ?? "unknown";
+for (const candidate of candidates) {
+  let agentId = candidate.agentId;
+  const inventoryPhase = candidate.phase;
   try {
-    const agentUrl = deployment.url as string;
-    const helloUrl = new URL("/hello", agentUrl);
+    const helloUrl = new URL("/hello", candidate.url);
     const requestUri = `${helloUrl.pathname}${helloUrl.search}`;
 
     const { response, proof } = await ag.reputation.capture(() =>
@@ -72,6 +90,7 @@ for (const deployment of candidates) {
       continue;
     }
 
+    agentId = String(proof.agentId);
     const verification = await ag.reputation.verifyProof(proof);
     const computedTaskHash = computeZeroGTaskHash({
       method: "GET",
@@ -100,7 +119,7 @@ for (const deployment of candidates) {
 
     verified = {
       agentId,
-      agentUrl,
+      agentUrl: candidate.url,
       inventoryPhase,
       statusCode: response.status,
       taskHash: proof.taskHash,
@@ -126,6 +145,7 @@ const receipt = {
   commit: targetSha,
   runner: process.env.GITHUB_ACTIONS === "true" ? "github-actions" : "local",
   attestorUrl,
+  explicitAgentUrlProvided: Boolean(explicitAgentUrl),
   modelCount: models.length,
   deploymentCount: deployments.length,
   phaseCounts,
@@ -146,6 +166,6 @@ console.log(JSON.stringify(receipt));
 
 if (!verified) {
   throw new Error(
-    `no public 0G Agentic ID produced a verified signed /hello; running=${running.length}; urlBearing=${urlBearing.length}; phases=${JSON.stringify(phaseCounts)}; attempts=${attempts.slice(0, 8).join(" | ")}`,
+    `no 0G Agentic ID produced a verified signed /hello; running=${running.length}; urlBearing=${urlBearing.length}; phases=${JSON.stringify(phaseCounts)}; attempts=${attempts.slice(0, 8).join(" | ")}`,
   );
 }
