@@ -1,0 +1,55 @@
+name: 0g-compute-live
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_url:
+        description: 'Provisioned 0G Compute service URL (without /chat/completions)'
+        required: true
+        type: string
+      model:
+        description: 'Model id served by the provisioned provider'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 0g-compute-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      ZG_SERVICE_URL: ${{ inputs.service_url }}
+      ZG_MODEL: ${{ inputs.model }}
+      ZG_API_SECRET: ${{ secrets.ZG_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Require provisioned API secret
+        run: test -n "$ZG_API_SECRET"
+      - name: Run one bounded 0G Compute inference
+        run: bun run probe:0g-compute-live
+      - name: Assert receipt boundaries
+        run: |
+          cat artifacts/0g-compute-live.json
+          bun -e 'const r = await Bun.file("artifacts/0g-compute-live.json").json(); if (!r.accepted || r.commit !== process.env.TARGET_SHA || r.compute?.provider !== "0g-compute" || r.compute?.liveInference !== true || r.proofBoundary !== "none-live-compute-only" || r.policy?.allowed !== true) throw new Error("0G Compute live receipt failed invariant")'
+      - name: Retain live Compute receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-0g-compute-${{ env.TARGET_SHA }}
+          path: artifacts/0g-compute-live.json
+          if-no-files-found: warn
+          retention-days: 7
