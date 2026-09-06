@@ -86,6 +86,26 @@ jobs:
             const aj=await ar.json();
             if(aj.configured!==false||aj.live!==false) throw new Error("unconfigured agent route mismatch");
             console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
+      - name: Prove Galileo RPC EIP-191 recovery positive and negative
+        run: |
+          bun -e '
+            import {generatePrivateKey,privateKeyToAccount} from "viem/accounts";
+            const challengeRoute=(await import("./api/wallet/challenge.ts")).default;
+            const verifyRoute=(await import("./api/wallet/verify.ts")).default;
+            const account=privateKeyToAccount(generatePrivateKey());
+            const other=privateKeyToAccount(generatePrivateKey());
+            const challengeResponse=await challengeRoute.fetch(new Request(`https://receiptgate.example/api/wallet/challenge?address=${account.address}`));
+            const challenge=await challengeResponse.json();
+            if(challengeResponse.status!==200)throw new Error(`challenge ${challengeResponse.status}`);
+            const signature=await account.signMessage({message:challenge.message});
+            const positive=await verifyRoute.fetch(new Request("https://receiptgate.example/api/wallet/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:account.address,message:challenge.message,signature})}));
+            const p=await positive.json();
+            if(positive.status!==200||p.ok!==true||p.checks?.signature!==true||p.checks?.rpcChain!==true||p.verificationTransport!=="0g-galileo-rpc-ecrecover")throw new Error(`Galileo positive failed: ${JSON.stringify(p)}`);
+            const wrongSignature=await other.signMessage({message:challenge.message});
+            const negative=await verifyRoute.fetch(new Request("https://receiptgate.example/api/wallet/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:account.address,message:challenge.message,signature:wrongSignature})}));
+            const n=await negative.json();
+            if(negative.status!==401||n.ok!==false||n.checks?.signature!==false||n.checks?.rpcChain!==true)throw new Error(`Galileo planted negative failed: ${JSON.stringify(n)}`);
+            console.log(JSON.stringify({transport:p.verificationTransport,chainId:p.chainId,positive:p.ok,negative:n.ok}));'
       - name: Validate Vercel Bun shape, health rewrite, and secret boundary
         run: |
           bun -e 'const c=await Bun.file("vercel.json").json();const h=(c.rewrites??[]).some((r)=>r.source==="/healthz"&&r.destination==="/api/healthz");if(c.bunVersion!=="1.x"||c.outputDirectory!=="public"||!h)throw new Error("vercel Bun configuration mismatch")'
