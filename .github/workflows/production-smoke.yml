@@ -1,0 +1,88 @@
+name: production-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'demo/**'
+      - 'public/**'
+      - 'vercel.json'
+      - '.github/workflows/production-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-readback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASE_URL: https://receiptgate.vercel.app
+      TARGET_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Wait for exact Vercel production commit
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ready=0
+          for _ in $(seq 1 72); do
+            code=$(curl -sS -o artifacts/health.json -w '%{http_code}' "$BASE_URL/api/healthz" || true)
+            if [[ "$code" == "200" ]]; then
+              if bun -e 'const h=await Bun.file("artifacts/health.json").json();process.exit(h.ok===true&&h.gitCommit===process.env.TARGET_SHA?0:1)' >/dev/null 2>&1; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          cat artifacts/health.json || true
+          test "$ready" = 1
+      - name: Public HTTPS smoke
+        run: |
+          set -euo pipefail
+          root_code=$(curl -sS -o artifacts/root.html -w '%{http_code}' "$BASE_URL/")
+          api_health_code=$(curl -sS -o artifacts/api-health.json -w '%{http_code}' "$BASE_URL/api/healthz")
+          health_code=$(curl -sS -o artifacts/health-rewrite.json -w '%{http_code}' "$BASE_URL/healthz")
+          config_code=$(curl -sS -o artifacts/config.json -w '%{http_code}' "$BASE_URL/api/config")
+          normal_code=$(curl -sS -o artifacts/demo-normal.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":false}' "$BASE_URL/api/demo")
+          tamper_code=$(curl -sS -o artifacts/demo-tamper.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":true}' "$BASE_URL/api/demo")
+          anon_code=$(curl -sS -o artifacts/live-compute-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/compute")
+          printf 'root=%s api_health=%s health=%s config=%s normal=%s tamper=%s anonymous_compute=%s\n' "$root_code" "$api_health_code" "$health_code" "$config_code" "$normal_code" "$tamper_code" "$anon_code"
+          test "$root_code" = 200
+          test "$api_health_code" = 200
+          test "$health_code" = 200
+          test "$config_code" = 200
+          test "$normal_code" = 200
+          test "$tamper_code" = 200
+          test "$anon_code" = 401
+          bun -e '
+            const a=await Bun.file("artifacts/api-health.json").json();
+            const b=await Bun.file("artifacts/health-rewrite.json").json();
+            const c=await Bun.file("artifacts/config.json").json();
+            const n=await Bun.file("artifacts/demo-normal.json").json();
+            const t=await Bun.file("artifacts/demo-tamper.json").json();
+            const x=await Bun.file("artifacts/live-compute-anonymous.json").json();
+            if(a.gitCommit!==process.env.TARGET_SHA||b.gitCommit!==process.env.TARGET_SHA)throw new Error("production commit mismatch");
+            if(c.walletAuthorizationRequiredForCompute!==true)throw new Error("wallet auth config missing");
+            if(n.receipt?.execution?.status!=="executed"||n.sideEffectCalls!==1)throw new Error("normal production demo failed");
+            if(t.receipt?.execution?.status!=="blocked"||t.sideEffectCalls!==0||t.receipt?.verification?.checks?.candidateBinding!==false)throw new Error("tamper production demo failed");
+            if(x.authorized!==false)throw new Error("anonymous Compute was not rejected");
+            const summary={schema:"receiptgate-production-smoke-v1",accepted:true,commit:process.env.TARGET_SHA,url:process.env.BASE_URL,health:a,normal:{status:n.receipt.execution.status,sideEffectCalls:n.sideEffectCalls},tamper:{status:t.receipt.execution.status,sideEffectCalls:t.sideEffectCalls,candidateBinding:t.receipt.verification.checks.candidateBinding},anonymousCompute:{status:401,authorized:x.authorized},generatedAt:new Date().toISOString()};
+            await Bun.write("artifacts/production-smoke.json",JSON.stringify(summary,null,2)+"\n");
+            console.log(JSON.stringify(summary));'
+      - name: Retain production readback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-production-${{ env.TARGET_SHA }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
