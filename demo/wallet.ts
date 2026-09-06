@@ -38,7 +38,7 @@ function normalizeOrigin(origin: string): string {
   return new URL(origin).origin;
 }
 
-export function createWalletChallenge(address: string, origin: string, nowMs = Date.now(), nonce = crypto.randomUUID()): WalletChallenge {
+export function createWalletChallenge(address: string, origin: string, nowMs = Date.now(), nonce: string = crypto.randomUUID()): WalletChallenge {
   if (!isAddress(address)) throw new Error("valid wallet address is required");
   const wallet = getAddress(address);
   const issuedAtMs = nowMs;
@@ -108,6 +108,6 @@ export async function verifyWalletAuthorization(input: { address: string; messag
 export function walletAllowed(address: `0x${string}`): boolean {
   const configured = process.env.DEMO_ALLOWED_WALLETS?.trim();
   if (!configured) return true;
-  const allowed = configured.split(",").map((value) => value.trim()).filter(isAddress).map((value) => getAddress(value).toLowerCase());
+  const allowed = configured.split(",").map((value) => value.trim()).filter((value): value is `0x${string}` => isAddress(value)).map((value) => getAddress(value).toLowerCase());
   return allowed.includes(address.toLowerCase());
 }
