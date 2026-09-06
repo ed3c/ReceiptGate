@@ -6,9 +6,10 @@
   "scripts": {
     "test": "bun test",
     "acceptance": "bun test tests/gate.test.ts && bun run scripts/runtime-receipt.ts",
-    "test:0g": "bun test tests/0g-verifier.test.ts",
+    "test:0g": "bun test tests/0g-verifier.test.ts tests/0g-compute.test.ts",
     "probe:0g-sdk": "bun run adapters/0g/sdk-smoke.ts",
-    "probe:0g-live": "bun run adapters/0g/live-probe.ts"
+    "probe:0g-live": "bun run adapters/0g/live-probe.ts",
+    "probe:0g-compute-live": "bun run adapters/0g/compute/live-canary.ts"
   },
   "dependencies": {
     "@0gfoundation/0g-agenticid-sdk": "0.1.2",
