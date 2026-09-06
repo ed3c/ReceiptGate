@@ -1,0 +1,51 @@
+name: 0g-live-proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent_url:
+        description: 'Optional explicit running 0G Agent URL; when empty the probe uses public deployment discovery'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 0g-live-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      ZERO_G_ATTESTOR_URL: https://agenticid.0g.ai
+      ZERO_G_AGENT_URL: ${{ inputs.agent_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install pinned 0G SDK
+        run: bun install
+      - name: Verify live signed 0G response
+        run: bun run probe:0g-live
+      - name: Assert live receipt binds exact candidate
+        if: success()
+        run: |
+          cat artifacts/0g-live-proof.json
+          bun -e 'const r = await Bun.file("artifacts/0g-live-proof.json").json(); if (!r.accepted || r.commit !== process.env.TARGET_SHA || !r.proof?.signerMatches || !r.proof?.notExpired || !r.proof?.dataOnChain || r.proof.taskHash !== r.proof.computedTaskHash) throw new Error("live 0G receipt failed invariant")'
+      - name: Retain live 0G proof or availability receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-0g-live-${{ env.TARGET_SHA }}
+          path: artifacts/0g-live-proof.json
+          if-no-files-found: error
+          retention-days: 7
