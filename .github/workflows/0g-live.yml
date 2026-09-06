@@ -1,26 +1,18 @@
 name: 0g-live-proof
 
 on:
-  pull_request:
-    paths:
-      - 'adapters/0g/live-probe.ts'
-      - 'adapters/0g/taskHash.ts'
-      - 'package.json'
-      - '.github/workflows/0g-live.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'adapters/0g/live-probe.ts'
-      - 'adapters/0g/taskHash.ts'
-      - 'package.json'
-      - '.github/workflows/0g-live.yml'
   workflow_dispatch:
+    inputs:
+      agent_url:
+        description: 'Optional explicit running 0G Agent URL; when empty the probe uses public deployment discovery'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: 0g-live-proof-${{ github.workflow }}-${{ github.ref }}
+  group: 0g-live-proof-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,8 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TARGET_SHA: ${{ github.sha }}
       ZERO_G_ATTESTOR_URL: https://agenticid.0g.ai
+      ZERO_G_AGENT_URL: ${{ inputs.agent_url }}
     steps:
       - uses: actions/checkout@v4
         with:
