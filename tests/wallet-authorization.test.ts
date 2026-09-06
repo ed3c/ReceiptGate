@@ -1,57 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { privateKeyToAccount } from "viem/accounts";
-import {
-  createWalletChallenge,
-  GALILEO_CHAIN_ID,
-  verifyWalletAuthorization,
-} from "../demo/wallet";
+import { createWalletChallenge, GALILEO_CHAIN_ID, verifyWalletAuthorization } from "../demo/wallet";
 
-const account = privateKeyToAccount(
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-);
+const account = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+const other = privateKeyToAccount("0x59c6995e998f97a5a0044976f7d4ecf0c6a2bc5463f6d7f6d1f6cae7a5a0f7e1");
 const NOW = 1_800_000_000_000;
+const ORIGIN = "https://receiptgate.example";
+async function signedChallenge(nowMs = NOW, nonce = "nonce-001") { const challenge = createWalletChallenge(account.address, ORIGIN, nowMs, nonce); const signature = await account.signMessage({ message: challenge.message }); return { challenge, signature }; }
 
 describe("browser wallet authorization", () => {
-  test("valid Galileo wallet signature authorizes the exact candidate", async () => {
-    const challenge = createWalletChallenge(account.address, NOW);
-    const signature = await account.signMessage({ message: challenge.message });
-    const receipt = await verifyWalletAuthorization({
-      address: account.address,
-      message: challenge.message,
-      signature,
-      nowMs: NOW + 1_000,
-    });
-    expect(receipt.ok).toBe(true);
-    expect(receipt.chainId).toBe(GALILEO_CHAIN_ID);
-    expect(receipt.checks.signature).toBe(true);
-    expect(receipt.checks.candidateHash).toBe(true);
-  });
-
-  test("tampering the signed candidate amount fails closed", async () => {
-    const challenge = createWalletChallenge(account.address, NOW);
-    const signature = await account.signMessage({ message: challenge.message });
-    const tampered = challenge.message.replace("amount=247", "amount=2470");
-    const receipt = await verifyWalletAuthorization({
-      address: account.address,
-      message: tampered,
-      signature,
-      nowMs: NOW + 1_000,
-    });
-    expect(receipt.ok).toBe(false);
-    expect(receipt.checks.amount).toBe(false);
-    expect(receipt.checks.signature).toBe(false);
-  });
-
-  test("expired wallet authorization fails closed", async () => {
-    const challenge = createWalletChallenge(account.address, NOW);
-    const signature = await account.signMessage({ message: challenge.message });
-    const receipt = await verifyWalletAuthorization({
-      address: account.address,
-      message: challenge.message,
-      signature,
-      nowMs: challenge.expiresAtMs + 1,
-    });
-    expect(receipt.ok).toBe(false);
-    expect(receipt.checks.freshness).toBe(false);
-  });
+  test("valid Galileo wallet signature authorizes exact candidate", async () => { const { challenge, signature } = await signedChallenge(); const receipt = await verifyWalletAuthorization({ address: account.address, message: challenge.message, signature, expectedOrigin: ORIGIN, nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(true); expect(receipt.chainId).toBe(GALILEO_CHAIN_ID); expect(Object.values(receipt.checks).every(Boolean)).toBe(true); });
+  test("wrong signer fails closed", async () => { const challenge = createWalletChallenge(account.address, ORIGIN, NOW, "nonce-002"); const signature = await other.signMessage({ message: challenge.message }); const receipt = await verifyWalletAuthorization({ address: account.address, message: challenge.message, signature, expectedOrigin: ORIGIN, nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(false); expect(receipt.checks.signature).toBe(false); });
+  test("wrong chain fails even when modified bytes are signed", async () => { const challenge = createWalletChallenge(account.address, ORIGIN, NOW, "nonce-003"); const message = challenge.message.replace(`chainId=${GALILEO_CHAIN_ID}`, "chainId=1"); const signature = await account.signMessage({ message }); const receipt = await verifyWalletAuthorization({ address: account.address, message, signature, expectedOrigin: ORIGIN, nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(false); expect(receipt.checks.chain).toBe(false); });
+  test("candidate tamper fails even when modified bytes are signed", async () => { const challenge = createWalletChallenge(account.address, ORIGIN, NOW, "nonce-004"); const message = challenge.message.replace(challenge.candidateHash, "0".repeat(64)); const signature = await account.signMessage({ message }); const receipt = await verifyWalletAuthorization({ address: account.address, message, signature, expectedOrigin: ORIGIN, nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(false); expect(receipt.checks.candidateHash).toBe(false); });
+  test("origin binding prevents preview/domain replay", async () => { const { challenge, signature } = await signedChallenge(NOW, "nonce-005"); const receipt = await verifyWalletAuthorization({ address: account.address, message: challenge.message, signature, expectedOrigin: "https://evil.example", nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(false); expect(receipt.checks.origin).toBe(false); });
+  test("expired authorization fails closed", async () => { const { challenge, signature } = await signedChallenge(NOW, "nonce-006"); const receipt = await verifyWalletAuthorization({ address: account.address, message: challenge.message, signature, expectedOrigin: ORIGIN, nowMs: challenge.expiresAtMs + 1 }); expect(receipt.ok).toBe(false); expect(receipt.checks.freshness).toBe(false); });
+  test("malformed signature fails closed", async () => { const challenge = createWalletChallenge(account.address, ORIGIN, NOW, "nonce-007"); const receipt = await verifyWalletAuthorization({ address: account.address, message: challenge.message, signature: "0x1234", expectedOrigin: ORIGIN, nowMs: NOW + 1_000 }); expect(receipt.ok).toBe(false); expect(receipt.checks.signature).toBe(false); });
 });
