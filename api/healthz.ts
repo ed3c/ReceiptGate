@@ -1,2 +1,6 @@
 import { healthHandler } from "../demo/vercel";
-export default { fetch: healthHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: healthHandler,
+});

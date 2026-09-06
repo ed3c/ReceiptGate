@@ -1,2 +1,6 @@
 import { walletChallengeHandler } from "../../demo/vercel";
-export default { fetch: walletChallengeHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: walletChallengeHandler,
+});

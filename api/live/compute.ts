@@ -1,2 +1,6 @@
 import { liveComputeHandler } from "../../demo/vercel";
-export default { fetch: liveComputeHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: liveComputeHandler,
+});

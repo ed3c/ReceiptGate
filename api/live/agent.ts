@@ -1,2 +1,6 @@
 import { liveAgentHandler } from "../../demo/vercel";
-export default { fetch: liveAgentHandler };
+
+Bun.serve({
+  port: 0,
+  fetch: liveAgentHandler,
+});
