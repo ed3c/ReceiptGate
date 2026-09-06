@@ -59,6 +59,8 @@ jobs:
             const config=(await import("./api/config.ts")).default;
             const demo=(await import("./api/demo.ts")).default;
             const compute=(await import("./api/live/compute.ts")).default;
+            const challenge=(await import("./api/wallet/challenge.ts")).default;
+            const agent=(await import("./api/live/agent.ts")).default;
             const cr=await config.fetch(new Request("https://receiptgate.example/api/config"));
             if(cr.status!==200) throw new Error(`config ${cr.status}`);
             const cj=await cr.json();
@@ -71,7 +73,15 @@ jobs:
             if(tamper.status!==200||tj.receipt?.execution?.status!=="blocked"||tj.sideEffectCalls!==0||tj.receipt?.verification?.checks?.candidateBinding!==false) throw new Error("tamper route failed");
             const anon=await compute.fetch(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
             if(anon.status!==401) throw new Error(`anonymous live Compute status ${anon.status}`);
-            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status}));'
+            const wc=await challenge.fetch(new Request("https://receiptgate.example/api/wallet/challenge?address=0x0000000000000000000000000000000000000001"));
+            if(wc.status!==200) throw new Error(`wallet challenge ${wc.status}`);
+            const wj=await wc.json();
+            if(wj.chainId!==16602||wj.origin!=="https://receiptgate.example") throw new Error("wallet challenge binding mismatch");
+            const ar=await agent.fetch(new Request("https://receiptgate.example/api/live/agent"));
+            if(ar.status!==200) throw new Error(`unconfigured agent route ${ar.status}`);
+            const aj=await ar.json();
+            if(aj.configured!==false||aj.live!==false) throw new Error("unconfigured agent route mismatch");
+            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
       - name: Validate Vercel Bun shape, health rewrite, and secret boundary
         run: |
           bun -e 'const c=await Bun.file("vercel.json").json();const h=(c.rewrites??[]).some((r)=>r.source==="/healthz"&&r.destination==="/api/healthz");if(c.bunVersion!=="1.x"||c.outputDirectory!=="public"||!h)throw new Error("vercel Bun configuration mismatch")'
