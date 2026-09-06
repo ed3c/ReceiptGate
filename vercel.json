@@ -9,6 +9,12 @@
       "maxDuration": 30
     }
   },
+  "rewrites": [
+    {
+      "source": "/healthz",
+      "destination": "/api/healthz"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
