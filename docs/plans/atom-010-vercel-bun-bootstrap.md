@@ -4,7 +4,7 @@ Production symptom: static `/` is 200 while all `api/*` endpoints fail with Verc
 
 Expected correction:
 
-1. replace unsupported `export default { fetch: handler }` API entrypoints with Vercel-native `Bun.serve({ port: 0, fetch: handler })`;
+1. keep Vercel-native `export default { fetch: handler }` (do not use Bun.serve in api/**);
 2. keep all business/wallet handlers in `demo/vercel.ts` unchanged;
 3. expose `/healthz` through a rewrite to `/api/healthz`;
 4. cloud-check every Bun bootstrap, wallet planted controls, and anonymous Compute 401;
