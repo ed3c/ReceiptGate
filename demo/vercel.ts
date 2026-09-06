@@ -15,7 +15,15 @@ export async function configHandler() {
     wallet: { chainId: GALILEO_CHAIN_ID, chainHex: GALILEO_CHAIN_HEX, rpcUrl: GALILEO_RPC_URL, explorer: GALILEO_EXPLORER, nativeCurrency: { name: "0G", symbol: "0G", decimals: 18 } },
   });
 }
-export async function healthHandler() { return json({ ok: true, service: "receiptgate-vercel-bun" }); }
+export async function healthHandler() {
+  return json({
+    ok: true,
+    service: "receiptgate-vercel-bun",
+    gitCommit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    deploymentId: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+    environment: process.env.VERCEL_TARGET_ENV ?? process.env.VERCEL_ENV ?? null,
+  });
+}
 export async function demoHandler(request: Request) { try { const body = (await request.json().catch(() => ({}))) as { tamper?: boolean }; return json(await runFixtureScenario(body.tamper === true)); } catch (error) { return json({ error: safeError(error) }, 503); } }
 
 export async function liveComputeHandler(request: Request) {
