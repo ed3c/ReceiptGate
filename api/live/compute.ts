@@ -1,3 +1,7 @@
+import { evaluatePolicy } from "../../core/policy.ts";
+import { ZeroGComputeClient } from "../../adapters/0g/compute/client.ts";
+import { verifyWalletAuthorization, walletAllowed } from "../../demo/wallet.ts";
+
 function json(value: unknown, status = 200): Response {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
@@ -10,6 +14,34 @@ function safeError(error: unknown): string {
     .slice(0, 400);
 }
 
+async function liveComputeEvidence() {
+  const serviceUrl = process.env.ZG_SERVICE_URL?.trim();
+  const apiSecret = process.env.ZG_API_SECRET?.trim();
+  const model = process.env.ZG_MODEL?.trim();
+  if (!serviceUrl || !apiSecret || !model) {
+    return { configured: false, live: false, reason: "ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET not configured" };
+  }
+
+  const client = new ZeroGComputeClient({ serviceUrl, apiSecret, model });
+  const candidate = await client.proposePurchase({
+    id: "hackathon-gpu-credits-live",
+    units: 10_000,
+    maxBudget: 300,
+    currency: "USD",
+    product: "GPU inference credits",
+  });
+  const policy = evaluatePolicy(candidate, { maxAmount: 300, allowedKinds: ["purchase"] });
+  return {
+    configured: true,
+    live: true,
+    provider: "0g-compute",
+    model,
+    candidate,
+    policy,
+    proofBoundary: "none-live-compute-only",
+  };
+}
+
 export default {
   async fetch(request: Request) {
     try {
@@ -19,12 +51,10 @@ export default {
         signature?: string;
       };
 
-      // Public spend guard must execute before loading wallet/provider modules.
       if (!body.address || !body.message || !body.signature) {
         return json({ live: false, authorized: false, error: "wallet authorization required" }, 401);
       }
 
-      const { verifyWalletAuthorization, walletAllowed } = await import("../../demo/wallet.ts");
       const wallet = await verifyWalletAuthorization({
         address: body.address,
         message: body.message,
@@ -43,7 +73,6 @@ export default {
         }, 403);
       }
 
-      const { liveComputeEvidence } = await import("../../demo/live.ts");
       const result = await liveComputeEvidence();
       return json({
         ...result,
