@@ -53,9 +53,25 @@ jobs:
             exit 1
           fi
           bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
-      - name: Assert anonymous sponsored Compute is rejected before provider execution
+      - name: Exercise actual public route handlers without secrets
         run: |
-          bun -e 'const {liveComputeHandler}=await import("./demo/vercel.ts");const r=await liveComputeHandler(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));if(r.status!==401)throw new Error(`anonymous live Compute status ${r.status}`);console.log(await r.text())'
+          bun -e '
+            const config=(await import("./api/config.ts")).default;
+            const demo=(await import("./api/demo.ts")).default;
+            const compute=(await import("./api/live/compute.ts")).default;
+            const cr=await config.fetch(new Request("https://receiptgate.example/api/config"));
+            if(cr.status!==200) throw new Error(`config ${cr.status}`);
+            const cj=await cr.json();
+            if(cj.walletAuthorizationRequiredForCompute!==true) throw new Error("wallet auth config missing");
+            const normal=await demo.fetch(new Request("https://receiptgate.example/api/demo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({tamper:false})}));
+            const nj=await normal.json();
+            if(normal.status!==200||nj.receipt?.execution?.status!=="executed"||nj.sideEffectCalls!==1) throw new Error("normal route failed");
+            const tamper=await demo.fetch(new Request("https://receiptgate.example/api/demo",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({tamper:true})}));
+            const tj=await tamper.json();
+            if(tamper.status!==200||tj.receipt?.execution?.status!=="blocked"||tj.sideEffectCalls!==0||tj.receipt?.verification?.checks?.candidateBinding!==false) throw new Error("tamper route failed");
+            const anon=await compute.fetch(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+            if(anon.status!==401) throw new Error(`anonymous live Compute status ${anon.status}`);
+            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status}));'
       - name: Validate Vercel Bun shape, health rewrite, and secret boundary
         run: |
           bun -e 'const c=await Bun.file("vercel.json").json();const h=(c.rewrites??[]).some((r)=>r.source==="/healthz"&&r.destination==="/api/healthz");if(c.bunVersion!=="1.x"||c.outputDirectory!=="public"||!h)throw new Error("vercel Bun configuration mismatch")'
