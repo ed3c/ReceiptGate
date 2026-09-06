@@ -1,0 +1,59 @@
+name: 0g-adapter
+
+on:
+  pull_request:
+    paths:
+      - 'adapters/0g/**'
+      - 'tests/0g-*.test.ts'
+      - 'docs/prompts/atom-002-0g-proof.md'
+      - 'package.json'
+      - '.github/workflows/0g-adapter.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'adapters/0g/**'
+      - 'tests/0g-*.test.ts'
+      - 'package.json'
+      - '.github/workflows/0g-adapter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 0g-adapter-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-0g-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Assert exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install pinned provider SDK
+        run: bun install
+      - name: Run 0G adapter planted controls
+        run: bun run test:0g
+      - name: Prove official SDK import surface
+        run: bun run probe:0g-sdk
+      - name: Write cloud receipt
+        run: |
+          mkdir -p artifacts
+          printf '{"schema":"receiptgate-0g-adapter-runtime-v1","accepted":true,"commit":"%s","runner":"github-actions"}\n' "$TARGET_SHA" > artifacts/0g-adapter-runtime.json
+          cat artifacts/0g-adapter-runtime.json
+      - name: Retain adapter runtime receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-0g-adapter-${{ env.TARGET_SHA }}
+          path: artifacts/0g-adapter-runtime.json
+          if-no-files-found: error
+          retention-days: 7
