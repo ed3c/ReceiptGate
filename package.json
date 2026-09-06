@@ -9,7 +9,11 @@
     "test:0g": "bun test tests/0g-verifier.test.ts tests/0g-compute.test.ts",
     "probe:0g-sdk": "bun run adapters/0g/sdk-smoke.ts",
     "probe:0g-live": "bun run adapters/0g/live-probe.ts",
-    "probe:0g-compute-live": "bun run adapters/0g/compute/live-canary.ts"
+    "probe:0g-compute-live": "bun run adapters/0g/compute/live-canary.ts",
+    "demo:doctor": "bun run scripts/demo-doctor.ts",
+    "demo:prepare": "bash scripts/demo.sh",
+    "provision:agentic-id": "bun run scripts/provision-agentic-id.ts",
+    "provision:compute": "bash scripts/provision-compute-local.sh"
   },
   "dependencies": {
     "@0gfoundation/0g-agenticid-sdk": "0.1.2",
