@@ -11,6 +11,7 @@ on:
       - 'tests/wallet-authorization.test.ts'
       - 'package.json'
       - '.github/workflows/vercel-shape.yml'
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -48,6 +49,9 @@ jobs:
       - name: Import every Vercel Bun function
         run: |
           bun -e 'await import("./api/config.ts"); await import("./api/healthz.ts"); await import("./api/demo.ts"); await import("./api/live/compute.ts"); await import("./api/live/agent.ts"); await import("./api/wallet/challenge.ts"); await import("./api/wallet/verify.ts"); console.log("vercel bun function imports: ok")'
+      - name: Assert anonymous sponsored Compute is rejected before provider execution
+        run: |
+          bun -e 'const {liveComputeHandler}=await import("./demo/vercel.ts");const r=await liveComputeHandler(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));if(r.status!==401)throw new Error(`anonymous live Compute status ${r.status}`);console.log(await r.text())'
       - name: Validate Vercel Bun shape and secret boundary
         run: |
           bun -e 'const c=await Bun.file("vercel.json").json();if(c.bunVersion!=="1.x"||c.outputDirectory!=="public")throw new Error("vercel Bun configuration mismatch")'
