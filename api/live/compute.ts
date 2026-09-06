@@ -1,3 +1,5 @@
+import { verifyMessage } from "viem";
+
 const GALILEO_CHAIN_ID = 16602;
 const WALLET_AUTH_TTL_MS = 2 * 60_000;
 const CANDIDATE_HASH = "f27d90312829eea02c99774da14dbc7e7cce47907f708b5bb099987d4e1aa110";
@@ -68,7 +70,6 @@ async function verifyAuthorization(address: string, message: string, signature: 
   };
   if (Object.values(checks).slice(0, -1).every(Boolean) && /^0x[0-9a-fA-F]{130}$/.test(signature)) {
     try {
-      const { verifyMessage } = await import("viem");
       checks.signature = await verifyMessage({
         address: address as `0x${string}`,
         message,
