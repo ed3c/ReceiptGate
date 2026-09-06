@@ -45,10 +45,12 @@ jobs:
         run: |
           bash -n scripts/live-demo.sh scripts/cleanup-demo-secret.sh
           bun run demo:doctor fixture
-      - name: Assert wallet private key is not a live workflow input
+      - name: Assert wallet private key is not a live workflow secret or input
         run: |
-          ! grep -q 'secrets\.PRIVATE_KEY' .github/workflows/live-demo.yml
-          ! grep -q 'PRIVATE_KEY:' .github/workflows/live-demo.yml
+          secret_needle='secrets.PRIVATE''_KEY'
+          input_needle='private''_key:'
+          ! grep -Fq "$secret_needle" .github/workflows/live-demo.yml
+          ! grep -Fiq "$input_needle" .github/workflows/live-demo.yml
 
   live:
     if: github.event_name == 'workflow_dispatch'
