@@ -1,3 +1,4 @@
+import { preflightHermes } from "./hermes-runtime";
 import { mkdir } from "node:fs/promises";
 import { AgenticID } from "@0gfoundation/0g-agenticid-sdk";
 
@@ -5,9 +6,9 @@ const privateKey = process.env.PRIVATE_KEY?.trim();
 const attestorUrl = process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai";
 const agentApiKey = process.env.AGENT_API_KEY?.trim() || process.env.ZG_API_SECRET?.trim();
 const requestedModel = process.env.ZG_AGENT_MODEL?.trim();
-const framework = process.env.ZG_AGENT_FRAMEWORK?.trim() || "openclaw";
+const framework = process.env.ZG_AGENT_FRAMEWORK?.trim() || "hermes";
 const name = process.env.ZG_AGENT_NAME?.trim() || "ReceiptGate Demo Agent";
-const idempotencyKey = process.env.ZG_AGENT_IDEMPOTENCY_KEY?.trim() || "receiptgate-hackathon-demo-v1";
+const idempotencyKey = process.env.ZG_AGENT_IDEMPOTENCY_KEY?.trim() || "receiptgate-hermes-testnet-v1";
 
 const MIN_SANDBOX_BALANCE_WEI = 100_000_000_000_000_000n; // 0.1 OG
 const TARGET_SANDBOX_BALANCE_WEI = 200_000_000_000_000_000n; // 0.2 OG
@@ -17,6 +18,12 @@ if (process.env.GITHUB_ACTIONS === "true" && process.env.ALLOW_GHA_PRIVATE_KEY_P
 }
 if (!privateKey || !/^0x[0-9a-fA-F]{64}$/.test(privateKey)) throw new Error("PRIVATE_KEY must be a 0x-prefixed 32-byte demo-wallet key");
 if (!agentApiKey) throw new Error("AGENT_API_KEY (or ZG_API_SECRET fallback) is required for the sealed runtime");
+
+if (framework !== "hermes") throw new Error("This provisioning path supports Hermes only; DSH requires a separately verified inference route");
+const model = requestedModel || "";
+const serviceUrl = process.env.ZG_SERVICE_URL?.trim() || "";
+const iData = await preflightHermes(serviceUrl, model, agentApiKey);
+console.log(JSON.stringify({ phase: "hermes-preflight", framework, model, serviceUrl, toolCalling: true, inferenceProofVerified: false }));
 
 const ag = await AgenticID.fromAttestor(attestorUrl, { account: privateKey as `0x${string}` });
 
@@ -46,7 +53,7 @@ console.log(JSON.stringify({
   minimumWei: MIN_SANDBOX_BALANCE_WEI.toString(),
   targetWei: TARGET_SANDBOX_BALANCE_WEI.toString(),
 }));
-if (sandboxBalanceWei < MIN_SANDBOX_BALANCE_WEI) {
+if (sandboxBalanceWei < TARGET_SANDBOX_BALANCE_WEI) {
   const amountWei = TARGET_SANDBOX_BALANCE_WEI - sandboxBalanceWei;
   const depositTx = await ag.deposit({ amountWei });
   console.log(JSON.stringify({
@@ -65,17 +72,12 @@ if (sandboxBalanceWei < MIN_SANDBOX_BALANCE_WEI) {
   }));
 }
 
-const models = await ag.agent.listModels();
-if (models.length === 0) throw new Error("0G Agentic ID router returned no models");
-const model = requestedModel ?? models.find((value) => value.toLowerCase().includes("0gm")) ?? models[0];
-if (requestedModel && !models.includes(requestedModel)) throw new Error(`requested ZG_AGENT_MODEL is not in live catalog: ${requestedModel}`);
-
 console.log(JSON.stringify({
   phase: "provision-start",
   attestorUrl,
   framework,
   model,
-  modelCount: models.length,
+  serviceUrl,
   idempotencyKey,
   trustRootsAcked: true,
   sandboxBalanceWei: sandboxBalanceWei.toString(),
@@ -85,7 +87,7 @@ const deployment = await ag.agent.deploy({
   name,
   description: "ReceiptGate Hackathon agent: produces externally verifiable service receipts before autonomous side effects.",
   framework,
-  inference: { provider: "0g-compute", model },
+  iData,
   sandbox: { apiKey: agentApiKey },
   idempotencyKey,
 }, { wait: "running" }) as any;
