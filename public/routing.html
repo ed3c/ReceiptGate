@@ -41,7 +41,7 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);let wallet=null,last=null;
-function eth(){return window.phantom?.ethereum||window.ethereum||null}
+function getEip1193Provider(){const eth=window.ethereum;if(eth&&eth.providers&&Array.isArray(eth.providers)){const mm=eth.providers.find(p=>p&&p.isMetaMask);if(mm)return mm;const named=eth.providers.find(p=>p&&(p.isRabby||p.isPhantom));if(named)return named;if(eth.providers[0])return eth.providers[0];}if(eth)return eth;if(window.phantom&&window.phantom.ethereum)return window.phantom.ethereum;return null;}function eth(){return getEip1193Provider()}
 function hexUtf8(s){return '0x'+Array.from(new TextEncoder().encode(s),b=>b.toString(16).padStart(2,'0')).join('')}
 async function config(){return fetch('/api/config').then(r=>r.json())}
 async function connect(){const e=eth();if(!e)throw new Error('Phantom / EIP-1193 wallet not found');const c=await config();try{await e.request({method:'wallet_switchEthereumChain',params:[{chainId:c.wallet.chainHex}]})}catch(err){if(err.code!==4902)throw err;await e.request({method:'wallet_addEthereumChain',params:[{chainId:c.wallet.chainHex,chainName:'0G Galileo Testnet',nativeCurrency:c.wallet.nativeCurrency,rpcUrls:[c.wallet.rpcUrl],blockExplorerUrls:[c.wallet.explorer]}]})}wallet=(await e.request({method:'eth_requestAccounts'}))[0];return wallet}
