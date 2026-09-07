@@ -28,6 +28,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      - name: Install pinned dependencies for transcript verification
+        run: bun install --frozen-lockfile
       - name: Run exact acceptance path
         run: bun run acceptance
       - name: Assert receipt binds exact candidate

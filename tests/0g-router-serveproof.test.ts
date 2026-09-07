@@ -15,6 +15,7 @@ const savedEnv = {
   ZG_SERVICE_URL: process.env.ZG_SERVICE_URL,
   ZG_MODEL: process.env.ZG_MODEL,
   ZG_API_SECRET: process.env.ZG_API_SECRET,
+  RECEIPTGATE_AGENT_ID: process.env.RECEIPTGATE_AGENT_ID,
   RECEIPTGATE_AGENT_URL: process.env.RECEIPTGATE_AGENT_URL,
   RECEIPTGATE_AGENT_SERVICE_PATH: process.env.RECEIPTGATE_AGENT_SERVICE_PATH,
 };
@@ -73,6 +74,7 @@ describe("0G OpenAI-compatible runtime transport", () => {
     process.env.ZG_MODEL = "0gm-1.0-35b-a3b";
     process.env.ZG_API_SECRET = "sk-test-secret-never-return";
     process.env.RECEIPTGATE_AGENT_URL = "https://agent.example";
+    process.env.RECEIPTGATE_AGENT_ID = "393";
     process.env.RECEIPTGATE_AGENT_SERVICE_PATH = "/api/receiptgate";
 
     const config = (await import("../api/config")).default;
@@ -90,8 +92,8 @@ describe("0G OpenAI-compatible runtime transport", () => {
   });
 });
 
-describe("ServeProof is an execution precondition only when configured", () => {
-  test("missing optional ServeProof leaves the existing deterministic gate unchanged", async () => {
+describe("ServeProof is always an execution precondition", () => {
+  test("missing ServeProof blocks even when caller marks it optional", async () => {
     const candidate = {
       id: "test",
       kind: "purchase" as const,
@@ -115,9 +117,9 @@ describe("ServeProof is an execution precondition only when configured", () => {
       candidate,
     });
     const gated = applyServeProofGate(base, { required: false, verified: false });
-    expect(gated.policy.allowed).toBe(true);
-    expect(gated.execution.status).toBe("executed");
-    expect(gated.execution.sideEffectCalls).toBe(1);
+    expect(gated.policy.allowed).toBe(false);
+    expect(gated.execution.status).toBe("blocked");
+    expect(gated.execution.sideEffectCalls).toBe(0);
   });
 
   test("configured but invalid ServeProof makes side effect unreachable", async () => {
@@ -236,9 +238,14 @@ describe("explicit procurement total price", () => {
         expect(response.status).toBe(200);
         expect(calls).toBe(2);
         expect(body.agentA.candidate.amount).toBe(total);
-        expect(body.policy.allowed).toBe(allowed);
-        expect(body.sideEffectCalls).toBe(allowed ? 1 : 0);
-        expect(body.execution.status).toBe(allowed ? "executed" : "blocked");
+        const proposal = evaluateHandoff({ candidate: body.handoffInput.candidate, originalHash: body.agentA.candidateHash, transmittedHash: body.handoffInput.candidateHash, review: body.agentB.review });
+        expect(proposal.policy.allowed).toBe(allowed);
+        expect(body.policy.allowed).toBe(false);
+        expect(body.sideEffectCalls).toBe(0);
+        expect(body.execution.status).toBe("blocked");
+        expect(body.live).toBe(false);
+        expect(body.fullPathLive).toBe(false);
+        expect(body.serveProof.required).toBe(true);
         if (tamper) expect(body.handoff.bound).toBe(false);
         if (total > 300) expect(body.policy.reasons).toContain(`candidate amount ${total} exceeds max 300`);
       }
@@ -248,4 +255,76 @@ describe("explicit procurement total price", () => {
       else process.env.DEMO_ALLOWED_WALLETS = previousAllowlist;
     }
   });
+});
+
+
+test("valid candidate echo cannot reuse a ServeProof from different transcript bytes", async () => {
+  const { matchesServeProofTranscript } = await import("../api/live/multi-agent");
+  const { computeZeroGTaskHash } = await import("../adapters/0g/taskHash");
+  const transcript = { method: "POST", requestUri: "/api/receiptgate", requestBody: '{"candidate":{"amount":247}}', responseBody: '{"candidateHash":"echo"}', statusCode: 200 };
+  const taskHash = computeZeroGTaskHash(transcript);
+  expect(matchesServeProofTranscript(taskHash, transcript)).toBe(true);
+  for (const mutation of [
+    { requestBody: '{"candidate":{"amount":2470}}' },
+    { responseBody: '{"candidateHash":"forged echo"}' },
+    { requestUri: "/api/another-service" }, { method: "GET" }, { statusCode: 500 },
+  ]) {
+    expect(matchesServeProofTranscript(taskHash, { ...transcript, ...mutation })).toBe(false);
+  }
+  expect(matchesServeProofTranscript(null, transcript)).toBe(false);
+});
+
+test("mandatory execution counts a real callback only after proof, identity, transcript, handoff and policy pass", async () => {
+  const { verifyCandidateServeProof, executeVerifiedHandoff } = await import("../api/live/multi-agent");
+  const { computeZeroGTaskHash } = await import("../adapters/0g/taskHash");
+  const candidate = { id: "signed", kind: "purchase" as const, target: "credits", amount: 247, currency: "USD" as const,
+    payload: { product: "GPU inference credits", units: 10000, quotedPrice: 247, sourceRisk: "low" as const, sourceReason: "quote", computeModel: "test" } };
+  const hash = await candidateHash(candidate);
+  const base = evaluateHandoff({ candidate, originalHash: hash, transmittedHash: hash,
+    review: { candidateHash: hash, verdict: "ALLOW", risk: "low", reason: "ok" } });
+  process.env.RECEIPTGATE_AGENT_URL = "https://agent.example";
+  process.env.RECEIPTGATE_AGENT_SERVICE_PATH = "/api/receiptgate";
+  process.env.RECEIPTGATE_AGENT_ID = "393";
+  let scenario = "valid";
+  let sdkCalls = 0;
+  const connect = async (): Promise<any> => ({
+    agent: { connect: async () => ({ base: "https://agent.example", fetchWithProof: async (path: string, init: RequestInit) => {
+      if (scenario === "unavailable") throw new Error("service unavailable");
+      const responseBody = JSON.stringify({ accepted: scenario !== "rejected", service: "receiptgate-candidate-binding-v1", candidateHash: scenario === "candidate" ? "0xwrong" : hash });
+      const taskHash = computeZeroGTaskHash({ method: "POST", requestUri: path, requestBody: String(init.body), responseBody, statusCode: 200 });
+      return { response: new Response(responseBody), proof: scenario === "missing" ? null : {
+        agentId: scenario === "identity" ? 394n : 393n,
+        taskHash: scenario === "transcript" ? "0x" + "00".repeat(32) : taskHash,
+        signature: "fixture", dataHashes: [],
+      } };
+    } }) },
+    reputation: { verifyProof: async () => {
+      sdkCalls++;
+      if (scenario === "verifier-error") throw new Error("RPC unavailable");
+      return { ok: !["expired", "signature"].includes(scenario), signerMatches: scenario !== "signature", notExpired: scenario !== "expired", dataOnChain: true, reasons: [scenario] };
+    } },
+  });
+  for (scenario of ["valid", "missing", "unavailable", "rejected", "candidate", "identity", "transcript", "expired", "signature", "verifier-error"]) {
+    const proof = await verifyCandidateServeProof(candidate, hash, connect);
+    const result = await executeVerifiedHandoff(candidate, base, proof);
+    expect(result.execution.sideEffectCalls).toBe(scenario === "valid" ? 1 : 0);
+    expect(result.receipt.execution.attempted).toBe(scenario === "valid");
+    expect(result.execution.status).toBe(scenario === "valid" ? "executed" : "blocked");
+  }
+  scenario = "valid";
+  const proof = await verifyCandidateServeProof(candidate, hash, connect);
+  const tampered = evaluateHandoff({ candidate, originalHash: "0x" + "00".repeat(32), transmittedHash: hash,
+    review: { candidateHash: hash, verdict: "ALLOW", risk: "low", reason: "ok" } });
+  expect((await executeVerifiedHandoff(candidate, tampered, proof)).execution.sideEffectCalls).toBe(0);
+  for (const key of ["RECEIPTGATE_AGENT_URL", "RECEIPTGATE_AGENT_SERVICE_PATH", "RECEIPTGATE_AGENT_ID"]) {
+    const saved = process.env[key];
+    delete process.env[key];
+    const callsBefore = sdkCalls;
+    const missing = await verifyCandidateServeProof(candidate, hash, connect);
+    expect(missing.required).toBe(true);
+    expect(missing.verified).toBe(false);
+    expect((await executeVerifiedHandoff(candidate, base, missing)).execution.sideEffectCalls).toBe(0);
+    expect(sdkCalls).toBe(callsBefore);
+    process.env[key] = saved;
+  }
 });

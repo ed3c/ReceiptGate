@@ -1,3 +1,5 @@
+import { executeWithReceipt } from "../../core/gate";
+import { computeZeroGTaskHash, type ZeroGTranscript } from "../../adapters/0g/taskHash";
 import { classifyComputeTransport } from "../../adapters/0g/compute/transport";
 export { classifyComputeTransport } from "../../adapters/0g/compute/transport";
 
@@ -33,6 +35,7 @@ type ServeProofGate = {
   responseStatus?: number;
   responseCandidateHash?: string | null;
   responseBinding?: boolean;
+  transcriptBinding?: boolean;
   proof?: {
     agentId: string | null;
     submitter: string | null;
@@ -211,8 +214,8 @@ export function evaluateHandoff(input: {
 }
 
 export function applyServeProofGate<T extends ReturnType<typeof evaluateHandoff>>(decision: T, serveProof: Pick<ServeProofGate, "required" | "verified" | "reason">): T {
-  const rules = { ...decision.policy.rules, serveProofRequired: serveProof.required } as T["policy"]["rules"];
-  if (!serveProof.required || serveProof.verified) {
+  const rules = { ...decision.policy.rules, serveProofRequired: true } as T["policy"]["rules"];
+  if (serveProof.required === true && serveProof.verified === true) {
     return {
       ...decision,
       policy: { ...decision.policy, rules },
@@ -225,6 +228,34 @@ export function applyServeProofGate<T extends ReturnType<typeof evaluateHandoff>
     policy: { ...decision.policy, allowed: false, reasons, rules },
     execution: { ...decision.execution, status: "blocked", sideEffectCalls: 0 },
   } as T;
+}
+
+export async function executeVerifiedHandoff(
+  candidate: Candidate,
+  baseDecision: ReturnType<typeof evaluateHandoff>,
+  serveProof: Pick<ServeProofGate, "required" | "verified" | "reason">,
+) {
+  const decision = applyServeProofGate(baseDecision, serveProof);
+  let sideEffectCalls = 0;
+  const receipt = await executeWithReceipt({
+    candidate,
+    proof: { source: "0g-agentic-id", candidateHash: await candidateHash(candidate), issuedAtMs: 0, expiresAtMs: 0 },
+    verifier: { async verify() {
+      return {
+        ok: decision.policy.allowed,
+        source: "0g-agentic-id",
+        checks: { authenticity: serveProof.verified, candidateBinding: serveProof.verified && baseDecision.handoff.bound, freshness: serveProof.verified },
+        reasons: decision.policy.reasons,
+      };
+    } },
+    policy: { maxAmount: 300, allowedKinds: ["purchase"] },
+    execute: async () => { sideEffectCalls += 1; },
+  });
+  return {
+    ...decision,
+    receipt,
+    execution: { ...decision.execution, status: receipt.execution.status, sideEffectCalls },
+  };
 }
 
 async function verifyWallet(request: Request, body: { address: string; message: string; signature: string }) {
@@ -276,47 +307,55 @@ function proofField(value: unknown): string | null {
   try { return String(value); } catch { return null; }
 }
 
-async function verifyCandidateServeProof(candidate: Candidate, candidateHashValue: string): Promise<ServeProofGate> {
+export function matchesServeProofTranscript(taskHash: unknown, transcript: ZeroGTranscript): boolean {
+  return typeof taskHash === "string" && /^0x[0-9a-f]{64}$/i.test(taskHash)
+    && computeZeroGTaskHash(transcript).toLowerCase() === taskHash.toLowerCase();
+}
+
+async function connectAttestor() {
+  const { AgenticID } = await import("@0gfoundation/0g-agenticid-sdk");
+  return AgenticID.fromAttestor(process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai");
+}
+
+export async function verifyCandidateServeProof(candidate: Candidate, candidateHashValue: string, connect = connectAttestor): Promise<ServeProofGate> {
   const agentUrl = process.env.RECEIPTGATE_AGENT_URL?.trim();
   const servicePath = process.env.RECEIPTGATE_AGENT_SERVICE_PATH?.trim();
-  if (!agentUrl || !servicePath) {
+  const expectedAgentId = process.env.RECEIPTGATE_AGENT_ID?.trim();
+  if (!agentUrl || !servicePath || !expectedAgentId || !/^[1-9][0-9]*$/.test(expectedAgentId)) {
     return {
       configured: false,
-      required: false,
+      required: true,
       verified: false,
-      reason: "candidate-bound Agentic ID service is not configured",
+      reason: "candidate-bound Agentic ID URL, service path, and expected Agent ID are required",
     };
   }
-  if (!servicePath.startsWith("/api/")) {
+  if (servicePath !== "/api/receiptgate") {
     return {
       configured: true,
       required: true,
       verified: false,
       servicePath,
-      reason: "RECEIPTGATE_AGENT_SERVICE_PATH must be a signed /api/* service",
+      reason: "RECEIPTGATE_AGENT_SERVICE_PATH must be /api/receiptgate",
     };
   }
 
   try {
-    const attestorUrl = process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai";
-    const { AgenticID } = await import("@0gfoundation/0g-agenticid-sdk");
-    const ag = await AgenticID.fromAttestor(attestorUrl);
+    const ag = await connect();
     const agent = await ag.agent.connect(agentUrl);
+    const requestBody = JSON.stringify({ purpose: "receiptgate-candidate-binding", candidateHash: candidateHashValue, candidate });
     const { response, proof } = await agent.fetchWithProof(servicePath, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        purpose: "receiptgate-candidate-binding",
-        candidateHash: candidateHashValue,
-        candidate,
-      }),
+      body: requestBody,
+      signal: AbortSignal.timeout(15_000),
     });
 
     const text = await response.text();
     let payload: any = null;
     try { payload = JSON.parse(text); } catch { payload = null; }
     const echoedHash = typeof payload?.candidateHash === "string" ? payload.candidateHash.toLowerCase() : null;
-    const responseBinding = echoedHash === candidateHashValue.toLowerCase();
+    const responseBinding = echoedHash === candidateHashValue.toLowerCase()
+      && payload?.accepted === true && payload?.service === "receiptgate-candidate-binding-v1";
 
     if (!proof) {
       return {
@@ -334,7 +373,12 @@ async function verifyCandidateServeProof(candidate: Candidate, candidateHashValu
     }
 
     const verification = await ag.reputation.verifyProof(proof);
-    const verified = response.ok && responseBinding && verification.ok === true;
+    const serviceUrl = new URL(servicePath, agent.base);
+    const transcriptBinding = matchesServeProofTranscript(proof.taskHash, {
+      method: "POST", requestUri: serviceUrl.pathname + serviceUrl.search, requestBody, responseBody: text, statusCode: response.status,
+    });
+    const identityBinding = String(proof.agentId) === expectedAgentId;
+    const verified = response.ok && responseBinding && transcriptBinding && identityBinding && verification.ok === true;
     return {
       configured: true,
       required: true,
@@ -343,6 +387,7 @@ async function verifyCandidateServeProof(candidate: Candidate, candidateHashValu
       responseStatus: response.status,
       responseCandidateHash: echoedHash,
       responseBinding,
+      transcriptBinding,
       proof: {
         agentId: proofField((proof as any).agentId),
         submitter: proofField((proof as any).submitter),
@@ -364,6 +409,10 @@ async function verifyCandidateServeProof(candidate: Candidate, candidateHashValu
         ? undefined
         : !response.ok
           ? `Agentic ID service returned HTTP ${response.status}`
+          : !identityBinding
+            ? "ServeProof Agent ID does not match the expected service identity"
+          : !transcriptBinding
+            ? "ServeProof taskHash does not match the exact request/response transcript"
           : !responseBinding
             ? "signed service response is not bound to the execution candidateHash"
             : `ServeProof verification failed: ${verification.reasons?.join("; ") || "unknown reason"}`,
@@ -464,16 +513,15 @@ export default {
         candidate: transmittedCandidate,
       });
 
-      // If a signed Agentic ID /api/* service is configured, its ServeProof is
-      // part of the execution precondition. Verification happens before the
-      // bounded side-effect oracle is made reachable.
       const serveProof = await verifyCandidateServeProof(transmittedCandidate, transmittedHash);
-      const decision = applyServeProofGate(baseDecision, serveProof);
+      const decision = await executeVerifiedHandoff(transmittedCandidate, baseDecision, serveProof);
 
       return json({
-        schema: "receiptgate-live-multi-agent-v2",
+        schema: "receiptgate-live-multi-agent-v3",
         configured: true,
-        live: true,
+        live: serveProof.verified,
+        inferenceLive: true,
+        fullPathLive: false,
         authorized: true,
         tampered: body.tamper === true,
         provider: transport,
@@ -509,9 +557,7 @@ export default {
         serveProof,
         ...decision,
         sideEffectCalls: decision.execution.sideEffectCalls,
-        proofBoundary: serveProof.required
-          ? "two-live-0g-inference-calls+handoff-binding+candidate-bound-agentic-id-service-proof"
-          : "two-live-0g-inference-calls+handoff-binding; candidate-bound Agentic ID service proof not configured",
+        proofBoundary: "ServeProof required; full NORMAL/ATTACK runtime pair not yet validated; demo callback only, no financial settlement",
       });
     } catch (error) {
       return json({ configured: true, live: false, authorized: false, error: safeError(error) }, 503);
