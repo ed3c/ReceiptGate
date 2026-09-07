@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "acceptance": "bun test tests/gate.test.ts tests/demo-director-contract.test.ts tests/0g-router-serveproof.test.ts tests/capability-receipt.test.ts tests/proof-routing.test.ts && bun run scripts/runtime-receipt.ts",
+    "acceptance": "bun test tests/gate.test.ts tests/demo-director-contract.test.ts tests/0g-router-serveproof.test.ts tests/capability-receipt.test.ts tests/proof-routing.test.ts tests/wallet-readiness.test.ts && bun run scripts/runtime-receipt.ts",
     "test:0g": "bun test tests/0g-verifier.test.ts tests/0g-compute.test.ts tests/0g-router-serveproof.test.ts tests/capability-receipt.test.ts tests/proof-routing.test.ts",
-    "test:wallet": "bun test tests/wallet-authorization.test.ts",
+    "test:wallet": "bun test tests/wallet-authorization.test.ts tests/wallet-readiness.test.ts",
     "test:capability": "bun test tests/capability-receipt.test.ts",
     "test:routing": "bun test tests/proof-routing.test.ts",
     "probe:0g-sdk": "bun run adapters/0g/sdk-smoke.ts",
