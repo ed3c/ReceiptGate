@@ -2,6 +2,44 @@
 
 This is the shortest production path for the Zero Gravity Taipei demo.
 
+## 0. Hackathon wallet mode: one controlled EOA
+
+For the demo, use one controlled Galileo EVM wallet for all wallet-facing operations:
+
+```text
+0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A
+```
+
+This wallet may be used for:
+
+1. `pc.testnet.0g.ai` Connect / Deposit / API-key creation through Phantom/browser authority;
+2. Director Demo `personal_sign` / EIP-191 authorization;
+3. local Agentic ID / CLI provisioning.
+
+The previously used Private Computer-connected address `0x53757A81102a758481Bf1968f0118DEeFA6Aa876` is not required for the hackathon path once Private Computer is reconnected with the controlled wallet above.
+
+One wallet does **not** mean one trust root. Keep these authorities separate:
+
+```text
+EOA private key       -> local/human wallet authority only
+0G Router API key     -> server-side inference credential
+Agentic ID / TEE key  -> runtime agent proof authority
+```
+
+Never put the EOA `PRIVATE_KEY`, seed phrase, or mnemonic in GitHub Actions or Vercel.
+
+Grok Bot currently reports a local `.wallet.pk` that derives the expected address. Before additional funding or provisioning, prove control without printing the key:
+
+- derive the exact address;
+- sign/recover a harmless fixed message;
+- migrate/read back the key through durable encrypted local storage;
+- repeat derive + sign/recover after secure-store readback;
+- remove any plaintext fallback only after encrypted-store readback passes.
+
+If Phantom import is required, use local human takeover and keep the secret out of chat, CI, screenshots, logs, and shell history.
+
+Use `.github/workflows/galileo-balance.yml` with the public address above to prove chainId `16602` and live native OG balance. The workflow accepts only a public address and never receives a private key.
+
 ## 1. 0G Router runtime
 
 Use the same three ReceiptGate production variables already supported by Vercel:
