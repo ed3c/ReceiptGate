@@ -50,19 +50,20 @@ jobs:
         run: bun run test:wallet
       - name: Prove Vercel demo adapter parity with core gate
         run: bun test tests/vercel-demo-parity.test.ts
-      - name: Bootstrap every Vercel Bun function
+      - name: Bootstrap every Vercel function
         run: |
           if grep -R --include='*.ts' -n 'Bun\.serve' api; then
             echo 'api/** must use export default { fetch }, not Bun.serve' >&2
             exit 1
           fi
-          bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
-      - name: Exercise actual public route handlers without secrets
+          bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/multi-agent.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
+      - name: Exercise public routes without secrets
         run: |
           bun -e '
             const config=(await import("./api/config.ts")).default;
             const demo=(await import("./api/demo.ts")).default;
             const compute=(await import("./api/live/compute.ts")).default;
+            const multi=(await import("./api/live/multi-agent.ts")).default;
             const challenge=(await import("./api/wallet/challenge.ts")).default;
             const agent=(await import("./api/live/agent.ts")).default;
             const cr=await config.fetch(new Request("https://receiptgate.example/api/config"));
@@ -77,6 +78,8 @@ jobs:
             if(tamper.status!==200||tj.receipt?.execution?.status!=="blocked"||tj.sideEffectCalls!==0||tj.receipt?.verification?.checks?.candidateBinding!==false) throw new Error("tamper route failed");
             const anon=await compute.fetch(new Request("https://receiptgate.example/api/live/compute",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
             if(anon.status!==401) throw new Error(`anonymous live Compute status ${anon.status}`);
+            const anonMulti=await multi.fetch(new Request("https://receiptgate.example/api/live/multi-agent",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+            if(anonMulti.status!==401) throw new Error(`anonymous multi-agent status ${anonMulti.status}`);
             const wc=await challenge.fetch(new Request("https://receiptgate.example/api/wallet/challenge?address=0x0000000000000000000000000000000000000001"));
             if(wc.status!==200) throw new Error(`wallet challenge ${wc.status}`);
             const wj=await wc.json();
@@ -85,7 +88,22 @@ jobs:
             if(ar.status!==200) throw new Error(`unconfigured agent route ${ar.status}`);
             const aj=await ar.json();
             if(aj.configured!==false||aj.live!==false) throw new Error("unconfigured agent route mismatch");
-            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
+            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,anonymousMultiAgent:anonMulti.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
+      - name: Prove multi-agent handoff positive and planted tamper
+        run: |
+          bun -e '
+            const m=await import("./api/live/multi-agent.ts");
+            const candidate={id:"test",kind:"purchase",target:"0G GPU inference credits",amount:247,currency:"USD",payload:{product:"GPU inference credits",units:10000,quotedPrice:247,sourceRisk:"low",sourceReason:"quote within budget",computeModel:"test-model"}};
+            const originalHash=await m.candidateHash(candidate);
+            const goodReview={candidateHash:originalHash,verdict:"ALLOW",risk:"low",reason:"within deterministic limits"};
+            const good=m.evaluateHandoff({originalHash,transmittedHash:originalHash,review:goodReview,candidate});
+            if(good.handoff.bound!==true||good.policy.allowed!==true||good.execution.status!=="executed"||good.execution.sideEffectCalls!==1)throw new Error(`good handoff failed ${JSON.stringify(good)}`);
+            const changed={...candidate,amount:2470,payload:{...candidate.payload}};
+            const changedHash=await m.candidateHash(changed);
+            const badReview={candidateHash:changedHash,verdict:"DENY",risk:"high",reason:"over budget"};
+            const bad=m.evaluateHandoff({originalHash,transmittedHash:changedHash,review:badReview,candidate:changed});
+            if(bad.handoff.bound!==false||bad.policy.allowed!==false||bad.execution.status!=="blocked"||bad.execution.sideEffectCalls!==0)throw new Error(`tamper handoff failed ${JSON.stringify(bad)}`);
+            console.log(JSON.stringify({normal:{bound:good.handoff.bound,allowed:good.policy.allowed,sideEffectCalls:good.execution.sideEffectCalls},tamper:{bound:bad.handoff.bound,allowed:bad.policy.allowed,sideEffectCalls:bad.execution.sideEffectCalls}}));'
       - name: Prove Galileo RPC EIP-191 recovery positive and negative
         run: |
           bun -e '

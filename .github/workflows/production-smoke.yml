@@ -17,7 +17,7 @@ permissions:
 jobs:
   production-readback:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       BASE_URL: https://receiptgate.vercel.app
       TARGET_SHA: ${{ github.sha }}
@@ -57,19 +57,42 @@ jobs:
           normal_code=$(curl -sS -o artifacts/demo-normal.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":false}' "$BASE_URL/api/demo")
           tamper_code=$(curl -sS -o artifacts/demo-tamper.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":true}' "$BASE_URL/api/demo")
           anon_code=$(curl -sS -o artifacts/live-compute-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/compute")
+          anon_multi_code=$(curl -sS -o artifacts/live-multi-agent-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/multi-agent")
           bun -e '
             import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+            const config=await Bun.file("artifacts/config.json").json();
             const account=privateKeyToAccount(generatePrivateKey());
-            const challengeResponse=await fetch(`${process.env.BASE_URL}/api/wallet/challenge?address=${account.address}`);
-            const challenge=await challengeResponse.json();
-            await Bun.write("artifacts/wallet-challenge.json",JSON.stringify(challenge));
-            if(challengeResponse.status!==200)throw new Error(`wallet challenge ${challengeResponse.status}`);
-            const signature=await account.signMessage({message:challenge.message});
-            const verifyResponse=await fetch(`${process.env.BASE_URL}/api/wallet/verify`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:account.address,message:challenge.message,signature})});
-            const verification=await verifyResponse.json();
-            await Bun.write("artifacts/wallet-verify.json",JSON.stringify(verification));
-            if(verifyResponse.status!==200)throw new Error(`wallet verify ${verifyResponse.status}: ${JSON.stringify(verification)}`);'
-          printf 'root=%s api_health=%s health=%s config=%s normal=%s tamper=%s anonymous_compute=%s wallet=verified\n' "$root_code" "$api_health_code" "$health_code" "$config_code" "$normal_code" "$tamper_code" "$anon_code"
+            async function auth(save=false){
+              const challengeResponse=await fetch(`${process.env.BASE_URL}/api/wallet/challenge?address=${account.address}`);
+              const challenge=await challengeResponse.json();
+              if(challengeResponse.status!==200)throw new Error(`wallet challenge ${challengeResponse.status}`);
+              const signature=await account.signMessage({message:challenge.message});
+              const verifyResponse=await fetch(`${process.env.BASE_URL}/api/wallet/verify`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:account.address,message:challenge.message,signature})});
+              const verification=await verifyResponse.json();
+              if(verifyResponse.status!==200)throw new Error(`wallet verify ${verifyResponse.status}: ${JSON.stringify(verification)}`);
+              if(save){
+                await Bun.write("artifacts/wallet-challenge.json",JSON.stringify(challenge));
+                await Bun.write("artifacts/wallet-verify.json",JSON.stringify(verification));
+              }
+              return {address:account.address,message:challenge.message,signature};
+            }
+            await auth(true);
+            if(config.computeConfigured===true){
+              const normalAuth=await auth();
+              const normalResponse=await fetch(`${process.env.BASE_URL}/api/live/multi-agent`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...normalAuth,tamper:false})});
+              const normal=await normalResponse.json();
+              await Bun.write("artifacts/live-multi-agent-normal.json",JSON.stringify(normal,null,2));
+              if(normalResponse.status!==200||normal.live!==true||normal.agentA?.live!==true||normal.agentB?.live!==true||normal.handoff?.bound!==true||normal.policy?.allowed!==true||normal.execution?.status!=="executed"||normal.sideEffectCalls!==1)throw new Error(`live multi-agent normal failed ${normalResponse.status}: ${JSON.stringify(normal)}`);
+              const tamperAuth=await auth();
+              const tamperResponse=await fetch(`${process.env.BASE_URL}/api/live/multi-agent`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...tamperAuth,tamper:true})});
+              const tamper=await tamperResponse.json();
+              await Bun.write("artifacts/live-multi-agent-tamper.json",JSON.stringify(tamper,null,2));
+              if(tamperResponse.status!==200||tamper.live!==true||tamper.agentA?.live!==true||tamper.agentB?.live!==true||tamper.handoff?.bound!==false||tamper.policy?.allowed!==false||tamper.execution?.status!=="blocked"||tamper.sideEffectCalls!==0)throw new Error(`live multi-agent tamper failed ${tamperResponse.status}: ${JSON.stringify(tamper)}`);
+              await Bun.write("artifacts/live-multi-agent-summary.json",JSON.stringify({configured:true,verified:true,normal:{handoffBound:normal.handoff.bound,policyAllowed:normal.policy.allowed,sideEffectCalls:normal.sideEffectCalls,agentA:normal.agentA.role,agentB:normal.agentB.role,model:normal.model},tamper:{handoffBound:tamper.handoff.bound,policyAllowed:tamper.policy.allowed,sideEffectCalls:tamper.sideEffectCalls}},null,2));
+            }else{
+              await Bun.write("artifacts/live-multi-agent-summary.json",JSON.stringify({configured:false,verified:false,skipped:true,reason:"Vercel ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET not configured"},null,2));
+            }'
+          printf 'root=%s api_health=%s health=%s config=%s normal=%s tamper=%s anonymous_compute=%s anonymous_multi_agent=%s wallet=verified\n' "$root_code" "$api_health_code" "$health_code" "$config_code" "$normal_code" "$tamper_code" "$anon_code" "$anon_multi_code"
           test "$root_code" = 200
           test "$api_health_code" = 200
           test "$health_code" = 200
@@ -77,6 +100,7 @@ jobs:
           test "$normal_code" = 200
           test "$tamper_code" = 200
           test "$anon_code" = 401
+          test "$anon_multi_code" = 401
           bun -e '
             const a=await Bun.file("artifacts/api-health.json").json();
             const b=await Bun.file("artifacts/health-rewrite.json").json();
@@ -84,16 +108,19 @@ jobs:
             const n=await Bun.file("artifacts/demo-normal.json").json();
             const t=await Bun.file("artifacts/demo-tamper.json").json();
             const x=await Bun.file("artifacts/live-compute-anonymous.json").json();
+            const xm=await Bun.file("artifacts/live-multi-agent-anonymous.json").json();
             const wc=await Bun.file("artifacts/wallet-challenge.json").json();
             const wv=await Bun.file("artifacts/wallet-verify.json").json();
+            const ma=await Bun.file("artifacts/live-multi-agent-summary.json").json();
             if(a.gitCommit!==process.env.TARGET_SHA||b.gitCommit!==process.env.TARGET_SHA)throw new Error("production commit mismatch");
             if(c.walletAuthorizationRequiredForCompute!==true)throw new Error("wallet auth config missing");
             if(n.receipt?.execution?.status!=="executed"||n.sideEffectCalls!==1)throw new Error("normal production demo failed");
             if(t.receipt?.execution?.status!=="blocked"||t.sideEffectCalls!==0||t.receipt?.verification?.checks?.candidateBinding!==false)throw new Error("tamper production demo failed");
-            if(x.authorized!==false)throw new Error("anonymous Compute was not rejected");
+            if(x.authorized!==false||xm.authorized!==false)throw new Error("anonymous Compute path was not rejected");
             if(wc.chainId!==16602||wc.origin!==process.env.BASE_URL)throw new Error("production wallet challenge mismatch");
             if(wv.ok!==true||wv.checks?.signature!==true||wv.checks?.origin!==true||wv.checks?.chain!==true||wv.checks?.candidateHash!==true)throw new Error("production wallet verification failed");
-            const summary={schema:"receiptgate-production-smoke-v2",accepted:true,commit:process.env.TARGET_SHA,url:process.env.BASE_URL,health:a,normal:{status:n.receipt.execution.status,sideEffectCalls:n.sideEffectCalls},tamper:{status:t.receipt.execution.status,sideEffectCalls:t.sideEffectCalls,candidateBinding:t.receipt.verification.checks.candidateBinding},anonymousCompute:{status:401,authorized:x.authorized},wallet:{challenge:true,verified:wv.ok,address:wv.address,chainId:wv.chainId,checks:wv.checks},generatedAt:new Date().toISOString()};
+            if(c.computeConfigured===true&&ma.verified!==true)throw new Error("configured production did not verify live multi-agent flow");
+            const summary={schema:"receiptgate-production-smoke-v3",accepted:true,commit:process.env.TARGET_SHA,url:process.env.BASE_URL,health:a,normal:{status:n.receipt.execution.status,sideEffectCalls:n.sideEffectCalls},tamper:{status:t.receipt.execution.status,sideEffectCalls:t.sideEffectCalls,candidateBinding:t.receipt.verification.checks.candidateBinding},anonymousCompute:{status:401,authorized:x.authorized},anonymousMultiAgent:{status:401,authorized:xm.authorized},wallet:{challenge:true,verified:wv.ok,address:wv.address,chainId:wv.chainId,checks:wv.checks},multiAgent:ma,generatedAt:new Date().toISOString()};
             await Bun.write("artifacts/production-smoke.json",JSON.stringify(summary,null,2)+"\n");
             console.log(JSON.stringify(summary));'
       - name: Retain production readback evidence
