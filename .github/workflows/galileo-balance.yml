@@ -1,0 +1,29 @@
+name: galileo-balance
+
+on:
+  push:
+    branches: [feature/runtime-unlock-console]
+    paths:
+      - 'scripts/check-galileo-balance.mjs'
+      - '.github/workflows/galileo-balance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  balance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Read public Galileo balance
+        run: bun scripts/check-galileo-balance.mjs 0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A | tee galileo-balance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: galileo-balance
+          path: galileo-balance.json
+          retention-days: 1
