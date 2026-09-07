@@ -6,6 +6,7 @@ function safeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
     .replace(/app-sk-[A-Za-z0-9._-]+/g, "[redacted-api-secret]")
+    .replace(/\bsk-[A-Za-z0-9._-]+/g, "[redacted-api-secret]")
     .replace(/0x[a-fA-F0-9]{64}/g, "[redacted-private-material]")
     .slice(0, 400);
 }
@@ -24,9 +25,21 @@ function walletAllowed(address: string): boolean {
     .includes(address.toLowerCase());
 }
 
-function chatCompletionsUrl(serviceUrl: string): string {
+export function classifyComputeTransport(serviceUrl: string): "0g-router" | "0g-compute-provider" {
+  try {
+    const url = new URL(serviceUrl);
+    if (url.hostname === "router-api.0g.ai") return "0g-router";
+  } catch {
+    // The fetch below will fail closed with the malformed URL.
+  }
+  return "0g-compute-provider";
+}
+
+export function chatCompletionsUrl(serviceUrl: string): string {
   const base = serviceUrl.replace(/\/+$/, "");
-  return base.endsWith("/v1/proxy") ? `${base}/chat/completions` : `${base}/v1/proxy/chat/completions`;
+  if (base.endsWith("/chat/completions")) return base;
+  if (base.endsWith("/v1/proxy") || base.endsWith("/v1")) return `${base}/chat/completions`;
+  return `${base}/v1/proxy/chat/completions`;
 }
 
 function parseDecision(content: unknown) {
@@ -52,6 +65,7 @@ async function runCompute() {
   if (!serviceUrl || !apiSecret || !model) {
     return { configured: false, live: false, reason: "ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET not configured" };
   }
+  const transport = classifyComputeTransport(serviceUrl);
   const response = await fetch(chatCompletionsUrl(serviceUrl), {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiSecret}` },
@@ -81,7 +95,16 @@ async function runCompute() {
   if (candidate.kind !== "purchase") reasons.push(`action kind ${candidate.kind} is not allowed`);
   if (!Number.isFinite(candidate.amount)) reasons.push("candidate amount is missing or invalid");
   else if (candidate.amount > 300) reasons.push(`candidate amount ${candidate.amount} exceeds max 300`);
-  return { configured: true, live: true, provider: "0g-compute", model, candidate, policy: { allowed: reasons.length === 0, reasons }, proofBoundary: "none-live-compute-only" };
+  return {
+    configured: true,
+    live: true,
+    provider: transport,
+    transport,
+    model,
+    candidate,
+    policy: { allowed: reasons.length === 0, reasons },
+    proofBoundary: "live-0g-inference-only-no-agentic-id-candidate-proof",
+  };
 }
 
 async function verifyWalletAtEdge(request: Request, body: { address: string; message: string; signature: string }) {
