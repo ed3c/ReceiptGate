@@ -10,6 +10,7 @@ on:
       - 'demo/vercel.ts'
       - 'tests/wallet-authorization.test.ts'
       - 'tests/vercel-demo-parity.test.ts'
+      - 'tests/capability-receipt.test.ts'
       - 'package.json'
       - '.github/workflows/vercel-shape.yml'
   workflow_dispatch:
@@ -23,6 +24,7 @@ on:
       - 'demo/vercel.ts'
       - 'tests/wallet-authorization.test.ts'
       - 'tests/vercel-demo-parity.test.ts'
+      - 'tests/capability-receipt.test.ts'
       - 'package.json'
       - '.github/workflows/vercel-shape.yml'
 
@@ -48,6 +50,8 @@ jobs:
         run: bun install
       - name: Run wallet authorization planted controls
         run: bun run test:wallet
+      - name: Run capability receipt planted controls
+        run: bun run test:capability
       - name: Prove Vercel demo adapter parity with core gate
         run: bun test tests/vercel-demo-parity.test.ts
       - name: Bootstrap every Vercel function
@@ -56,7 +60,7 @@ jobs:
             echo 'api/** must use export default { fetch }, not Bun.serve' >&2
             exit 1
           fi
-          bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/multi-agent.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
+          bun -e 'for (const p of ["./api/config.ts","./api/healthz.ts","./api/demo.ts","./api/live/compute.ts","./api/live/multi-agent.ts","./api/live/capability.ts","./api/live/agent.ts","./api/wallet/challenge.ts","./api/wallet/verify.ts"]) { const m=await import(p); if (typeof m.default?.fetch !== "function") throw new Error(`${p} missing default.fetch`); } const hz=await (await import("./api/healthz.ts")).default.fetch(new Request("https://receiptgate.example/api/healthz")); if (hz.status!==200) throw new Error(`healthz ${hz.status}`); console.log("vercel export-default bootstraps: ok"); process.exit(0)'
       - name: Exercise public routes without secrets
         run: |
           bun -e '
@@ -64,6 +68,7 @@ jobs:
             const demo=(await import("./api/demo.ts")).default;
             const compute=(await import("./api/live/compute.ts")).default;
             const multi=(await import("./api/live/multi-agent.ts")).default;
+            const capability=(await import("./api/live/capability.ts")).default;
             const challenge=(await import("./api/wallet/challenge.ts")).default;
             const agent=(await import("./api/live/agent.ts")).default;
             const cr=await config.fetch(new Request("https://receiptgate.example/api/config"));
@@ -80,6 +85,8 @@ jobs:
             if(anon.status!==401) throw new Error(`anonymous live Compute status ${anon.status}`);
             const anonMulti=await multi.fetch(new Request("https://receiptgate.example/api/live/multi-agent",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
             if(anonMulti.status!==401) throw new Error(`anonymous multi-agent status ${anonMulti.status}`);
+            const anonCapability=await capability.fetch(new Request("https://receiptgate.example/api/live/capability",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}));
+            if(anonCapability.status!==401) throw new Error(`anonymous capability status ${anonCapability.status}`);
             const wc=await challenge.fetch(new Request("https://receiptgate.example/api/wallet/challenge?address=0x0000000000000000000000000000000000000001"));
             if(wc.status!==200) throw new Error(`wallet challenge ${wc.status}`);
             const wj=await wc.json();
@@ -88,7 +95,7 @@ jobs:
             if(ar.status!==200) throw new Error(`unconfigured agent route ${ar.status}`);
             const aj=await ar.json();
             if(aj.configured!==false||aj.live!==false) throw new Error("unconfigured agent route mismatch");
-            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,anonymousMultiAgent:anonMulti.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
+            console.log(JSON.stringify({config:cr.status,normal:normal.status,tamper:tamper.status,anonymousCompute:anon.status,anonymousMultiAgent:anonMulti.status,anonymousCapability:anonCapability.status,walletChallenge:wc.status,agentUnconfigured:ar.status}));'
       - name: Prove multi-agent handoff positive and planted tamper
         run: |
           bun -e '
@@ -128,4 +135,5 @@ jobs:
         run: |
           bun -e 'const c=await Bun.file("vercel.json").json();const h=(c.rewrites??[]).some((r)=>r.source==="/healthz"&&r.destination==="/api/healthz");if(c.bunVersion!=="1.x"||c.outputDirectory!=="public"||!h)throw new Error("vercel Bun configuration mismatch")'
           test -f public/index.html
+          test -f public/capability.html
           ! grep -R "process.env.PRIVATE_KEY" api demo/vercel.ts demo/wallet.ts
