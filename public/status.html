@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>ReceiptGate — Status, Proof, and Why It Matters</title>
+<style>
+:root{color-scheme:dark;--bg:#000;--panel:#080808;--panel2:#101010;--ink:#fff;--muted:#9b9b9b;--line:#292929;--purple:#b75fff;--purple2:#d8adff;--green:#73e6a3;--amber:#ffd166;--red:#ff6174;--mono:"SFMono-Regular",Consolas,monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55}a{color:inherit}.wrap{width:min(1180px,calc(100% - 32px));margin:auto;padding:28px 0 80px}.top{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:12px 0 30px}.brand{font:800 13px var(--mono);letter-spacing:.08em}.nav{display:flex;gap:10px;flex-wrap:wrap}.nav a{border:1px solid var(--line);padding:8px 10px;text-decoration:none;font:700 11px var(--mono);color:#ddd}.hero{display:grid;grid-template-columns:1.3fr .7fr;gap:32px;padding:56px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.kicker{font:800 11px var(--mono);letter-spacing:.16em;color:var(--purple2);text-transform:uppercase}.hero h1{font-size:clamp(52px,8vw,112px);line-height:.84;letter-spacing:-.065em;margin:16px 0 24px}.hero h1 span{color:var(--purple)}.hero p{font-size:clamp(18px,2vw,24px);color:#d2d2d2;max-width:760px}.rule{border-left:2px solid var(--purple);padding:18px 0 18px 20px;align-self:center}.rule code{display:block;font:800 14px/1.7 var(--mono);white-space:pre-wrap}.rule small{color:var(--muted)}.section{padding:56px 0;border-bottom:1px solid var(--line)}.section h2{font-size:clamp(32px,4.5vw,58px);letter-spacing:-.045em;line-height:.95;margin:0 0 16px}.lead{color:#cfcfcf;max-width:860px;font-size:17px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.card{border:1px solid var(--line);background:var(--panel);padding:20px;min-height:170px}.card h3{margin:0 0 8px;font-size:17px}.card p{margin:0;color:var(--muted);font-size:14px}.tag{display:inline-block;font:800 10px var(--mono);letter-spacing:.08em;padding:5px 7px;border:1px solid var(--line);margin-bottom:14px}.done{color:var(--green);border-color:#275f3e}.pending{color:var(--amber);border-color:#6b5725}.blocked{color:var(--red);border-color:#6d2430}.runtime{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}.panel{border:1px solid var(--line);background:var(--panel);padding:20px}.panel h3{margin:0 0 14px}.kv{display:grid;grid-template-columns:1fr auto;gap:8px 18px;padding:9px 0;border-bottom:1px solid #1c1c1c;font:12px var(--mono)}.kv span:first-child{color:var(--muted)}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}.flow{margin-top:24px;border:1px solid var(--line);background:#050505;padding:20px;overflow:auto}.flow pre{margin:0;font:13px/1.8 var(--mono);color:#ddd}.why{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.why .card strong{display:block;color:var(--purple2);font-size:22px;margin-bottom:10px}.callout{border:1px solid #4f2165;background:linear-gradient(135deg,rgba(146,0,225,.18),rgba(146,0,225,.03));padding:28px;margin-top:24px}.callout b{font-size:24px}.links{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.btn{display:inline-block;text-decoration:none;padding:11px 14px;border:1px solid var(--line);font:800 11px var(--mono);background:#111}.btn.primary{background:#fff;color:#000;border-color:#fff}.foot{padding-top:32px;color:#666;font:11px var(--mono)}@media(max-width:850px){.hero,.runtime{grid-template-columns:1fr}.grid,.why{grid-template-columns:1fr}.hero h1{font-size:60px}.top{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">RECEIPTGATE / ZERO GRAVITY TAIPEI</div>
+    <div class="nav">
+      <a href="/">Demo</a><a href="/director.html">Director</a><a href="/capability.html">Capability</a><a href="/routing.html">Routing</a>
+    </div>
+  </div>
+
+  <section class="hero">
+    <div>
+      <div class="kicker">Project status + proof boundary</div>
+      <h1>No proof.<br><span>No action.</span></h1>
+      <p>當 autonomous agent 開始替人下單、付款、呼叫另一個 agent 或觸發真實 side effect，最大的風險不是模型不夠聰明，而是「誰授權、哪個版本被批准、證據是否綁定到同一個候選動作」沒有被機械化驗證。</p>
+    </div>
+    <div class="rule">
+      <small>Execution invariant</small>
+      <code>execute(sideEffect) is unreachable
+unless
+verify(proof, candidate) == PASS
+AND
+policy(candidate) == ALLOW</code>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>為什麼 ReceiptGate 必要</h2>
+    <p class="lead">LLM 可以提出動作，但不能因為「看起來合理」就自動取得執行權。ReceiptGate 把推理、證明與授權拆成三個不同的 trust boundary。</p>
+    <div class="why">
+      <div class="card"><strong>MODEL</strong><h3>What intelligence generated this?</h3><p>Agent A / Agent B 可以提出候選與風險建議，但模型輸出只是 proposal，不是 authority。</p></div>
+      <div class="card"><strong>PROOF</strong><h3>What can I independently verify?</h3><p>Wallet signature、candidate hash、handoff binding、runtime receipt、Agentic ID / ServeProof 都必須能被獨立驗證。</p></div>
+      <div class="card"><strong>POLICY</strong><h3>Is that evidence enough to execute?</h3><p>Deterministic policy 決定證據是否足以讓 side effect reachable。模型不能選擇自己的 authority。</p></div>
+    </div>
+    <div class="callout"><b>Compute proposes; Proof verifies; Policy authorizes.</b><br>這就是 ReceiptGate 與一般「Agent + tool call」最大的差異。</div>
+  </section>
+
+  <section class="section">
+    <h2>已完成</h2>
+    <p class="lead">以下是已進入 repository / CI / Vercel production 的能力。頁面下方會即時讀取 production config 與 Galileo wallet readiness。</p>
+    <div class="grid">
+      <div class="card"><span class="tag done">DONE</span><h3>Deterministic execution gate</h3><p>Normal control 可 EXECUTE / 1；tamper control 會 BLOCK / 0，candidate binding 失敗時 side effect 不可達。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Galileo wallet authorization</h3><p>EIP-191 challenge + Galileo RPC ecrecover，驗證 signer、chain、origin、freshness 與 exact candidate hash。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Single-wallet hackathon mode</h3><p>Demo canonical EOA：0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Wallet readiness receipt</h3><p>Production endpoint 直接讀 Galileo chainId 與 native OG balance，區分「有鏈上資金」與「Private Computer credit」。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Multi-Agent gate</h3><p>ProcurementAgent → candidate hash → RiskAgent → ReceiptGate。Tamper x10 後 handoff binding 必須 fail closed。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Capability Receipt</h3><p>同一 0GM model、不同 harness、同一 deterministic eval；輸出 harness/eval/receipt hashes 與 continuity status。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Proof-aware routing</h3><p>financial side effect → HIGH → Private → 0GM-1.0-35B-A3B。Route policy 由 ReceiptGate 決定，不由 LLM 自己決定。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Demo Director</h3><p>人類與 browser agent 都能依 deterministic story 展示 normal / tamper / proof boundaries，沒有 silent fixture fallback。</p></div>
+      <div class="card"><span class="tag done">DONE</span><h3>Exact-head CI evidence</h3><p>Acceptance、Vercel shape、production smoke、runtime-readiness smoke 都綁 exact commit，不以敘述代替 runtime evidence。</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>尚未完成 / 目前 blocker</h2>
+    <div class="grid">
+      <div class="card"><span class="tag pending">P0</span><h3>Private Computer API key</h3><p>需用受控 wallet 連 pc.testnet.0g.ai、Deposit 到 Main Account、建立 Trust=Private 的 bounded API key。</p></div>
+      <div class="card"><span class="tag pending">P0</span><h3>Vercel ZG_* live runtime</h3><p>尚需 ZG_SERVICE_URL、ZG_MODEL、ZG_API_SECRET。完成後 Multi-Agent、Capability、Routing 才能從 deployed code 變成真實 0G inference。</p></div>
+      <div class="card"><span class="tag pending">P1</span><h3>Agentic ID provisioning</h3><p>使用 local-only EOA private key 做 ack / sandbox / deploy；private key 永不進 Vercel 或 GitHub Actions。</p></div>
+      <div class="card"><span class="tag pending">P1</span><h3>Candidate-bound ServeProof</h3><p>Agentic ID sandbox 的 /api/receiptgate 必須回傳 exact candidateHash，並由 X-Agent-Proof + verifyProof 驗證。</p></div>
+      <div class="card"><span class="tag pending">MANUAL</span><h3>Final wallet allowlist lock</h3><p>Live CI proof route先通過一次，再把 DEMO_ALLOWED_WALLETS 鎖定為 canonical demo wallet，避免 CI ephemeral signer 被誤當 final human authority。</p></div>
+      <div class="card"><span class="tag pending">UX</span><h3>Mobile wallet handoff</h3><p>iOS 一般 Safari / in-app browser 不一定有 injected EIP-1193 provider；mobile 路徑需使用 wallet app browser 或對應 deeplink / wallet-standard adapter。</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Production 現況</h2>
+    <p class="lead">這不是寫死的 marketing 狀態。下面資料直接 fetch production <code>/api/config</code> 與 <code>/api/wallet/readiness</code>。</p>
+    <div class="runtime">
+      <div class="panel"><h3>Runtime configuration</h3><div id="configRows">Loading…</div></div>
+      <div class="panel"><h3>Galileo wallet readiness</h3><div id="walletRows">Loading…</div></div>
+    </div>
+    <div class="flow"><pre>USER / WALLET
+    ↓ exact authorization
+0G COMPUTE / ROUTER
+    ↓ candidate proposal
+AGENT A
+    ↓ candidateHash
+AGENT B
+    ↓ advisory result
+RECEIPTGATE
+    ↓ proof binding + deterministic policy
+EXECUTE / BLOCK
+
+Next proof layer:
+Agentic ID / TEE → X-Agent-Proof → candidate-bound ServeProof</pre></div>
+  </section>
+
+  <section class="section">
+    <h2>現在可以驗證到哪裡</h2>
+    <div class="grid">
+      <div class="card"><span class="tag done">LIVE NOW</span><h3>Galileo chain + funding</h3><p>公開地址、chainId 16602、native balance 可由 Vercel production readback。</p></div>
+      <div class="card"><span class="tag done">LIVE NOW</span><h3>Wallet signature verifier</h3><p>Browser wallet 可對 exact bounded workflow personal_sign；server 只做 public verification，不持有 private key。</p></div>
+      <div class="card"><span class="tag done">LIVE NOW</span><h3>Deterministic positive / negative oracle</h3><p>合法候選可達 side effect；被竄改候選即使其他 proof 看似正常也必須 BLOCK。</p></div>
+      <div class="card"><span class="tag pending">AFTER ZG_*</span><h3>Real 0GM Multi-Agent</h3><p>兩次真實 0G inference + exact handoff binding + ReceiptGate policy。</p></div>
+      <div class="card"><span class="tag pending">AFTER ZG_*</span><h3>Real Capability / Proof route</h3><p>同模型 harness continuity 與 financial → Private → 0GM route receipt。</p></div>
+      <div class="card"><span class="tag pending">AFTER AGENTIC ID</span><h3>ServeProof</h3><p>證明某個 sealed Agentic ID service 對 exact execution candidate 簽了回應。</p></div>
+    </div>
+    <div class="links"><a class="btn primary" href="/director.html">Open Director</a><a class="btn" href="/capability.html">Capability Receipt</a><a class="btn" href="/routing.html">Proof-aware Routing</a><a class="btn" href="/api/wallet/readiness">Wallet Readiness JSON</a><a class="btn" href="/api/config">Runtime Config JSON</a></div>
+  </section>
+
+  <div class="foot">ReceiptGate — cryptographic receipts before autonomous agents act.</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const row=(k,v,cls='')=>`<div class="kv"><span>${k}</span><span class="${cls}">${v}</span></div>`;
+const b=v=>v===true?['true','ok']:v===false?['false','warn']:[String(v??'-'),''];
+async function load(){
+  try{
+    const [c,w]=await Promise.all([fetch('/api/config',{cache:'no-store'}).then(r=>r.json()),fetch('/api/wallet/readiness',{cache:'no-store'}).then(r=>r.json())]);
+    const cr=[];
+    for(const [k,v] of [['computeConfigured',c.computeConfigured],['computeTransport',c.computeTransport],['computeModel',c.computeModel],['agentConfigured',c.agentConfigured],['serveProofConfigured',c.serveProofConfigured],['walletAllowlistEnabled',c.walletAllowlistEnabled],['demoWallet.serverEnforced',c.demoWallet?.serverEnforced]]){const [x,cl]=b(v);cr.push(row(k,x,cl));}
+    $('configRows').innerHTML=cr.join('');
+    const wr=[];
+    wr.push(row('live',String(w.live),w.live?'ok':'bad'));
+    wr.push(row('chainId',String(w.chainId),w.chainId===16602?'ok':'bad'));
+    wr.push(row('address',w.address||'-',''));
+    wr.push(row('balanceOG',w.balanceOG??'-',Number(w.balanceOG)>=10?'ok':'warn'));
+    wr.push(row('agentic target',w.funding?.agenticTargetMet?'PASS':'WAIT',w.funding?.agenticTargetMet?'ok':'warn'));
+    wr.push(row('legacy 4 OG',w.funding?.legacyFallbackMet?'PASS':'WAIT',w.funding?.legacyFallbackMet?'ok':'warn'));
+    wr.push(row('10 OG reserve',w.funding?.reserveTargetMet?'PASS':'WAIT',w.funding?.reserveTargetMet?'ok':'warn'));
+    $('walletRows').innerHTML=wr.join('');
+  }catch(e){$('configRows').textContent='Runtime readback failed: '+e;$('walletRows').textContent='Runtime readback failed: '+e;}
+}
+load();
+</script>
+</body>
+</html>
