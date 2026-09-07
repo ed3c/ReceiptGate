@@ -1,0 +1,120 @@
+name: runtime-readiness-smoke
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/config.ts'
+      - 'api/wallet/readiness.ts'
+      - 'api/live/proof-route.ts'
+      - 'public/routing.html'
+      - '.github/workflows/runtime-readiness-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BASE_URL: 'https://receiptgate.vercel.app'
+      TARGET_SHA: '${{ github.sha }}'
+      DEMO_WALLET: '0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ github.sha }}'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile
+      - name: Wait for exact Vercel production commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ready=0
+          for _ in $(seq 1 72); do
+            code=$(curl -sS -o artifacts/health.json -w '%{http_code}' "$BASE_URL/api/healthz" || true)
+            if [[ "$code" == "200" ]]; then
+              if bun -e 'const h=await Bun.file("artifacts/health.json").json(); process.exit(h.ok===true&&h.gitCommit===process.env.TARGET_SHA?0:1)' >/dev/null 2>&1; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          cat artifacts/health.json || true
+          test "$ready" = 1
+      - name: Read single-wallet and routing surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_code=$(curl -sS -o artifacts/config.json -w '%{http_code}' "$BASE_URL/api/config")
+          wallet_code=$(curl -sS -o artifacts/wallet-readiness.json -w '%{http_code}' "$BASE_URL/api/wallet/readiness")
+          routing_page_code=$(curl -sS -o artifacts/routing.html -w '%{http_code}' "$BASE_URL/routing.html")
+          anon_code=$(curl -sS -o artifacts/proof-route-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/proof-route")
+          test "$config_code" = 200
+          test "$wallet_code" = 200
+          test "$routing_page_code" = 200
+          test "$anon_code" = 401
+          grep -q 'ReceiptGateProofRouter' artifacts/routing.html
+          bun -e '
+            const config=await Bun.file("artifacts/config.json").json();
+            const wallet=await Bun.file("artifacts/wallet-readiness.json").json();
+            const anon=await Bun.file("artifacts/proof-route-anonymous.json").json();
+            if(config.demoWallet?.mode!=="single-wallet-hackathon")throw new Error("single-wallet mode missing");
+            if(config.demoWallet?.address?.toLowerCase()!==process.env.DEMO_WALLET.toLowerCase())throw new Error("demo wallet mismatch");
+            if(wallet.schema!=="receiptgate-demo-wallet-readiness-v1"||wallet.live!==true)throw new Error("wallet readiness not live");
+            if(wallet.chainId!==16602||wallet.address?.toLowerCase()!==process.env.DEMO_WALLET.toLowerCase())throw new Error("Galileo wallet binding mismatch");
+            if(!/^\d+$/.test(wallet.balanceWei||""))throw new Error("invalid balanceWei");
+            if(anon.authorized!==false)throw new Error("anonymous proof route was not rejected");
+            await Bun.write("artifacts/readiness-summary.json",JSON.stringify({
+              schema:"receiptgate-runtime-readiness-smoke-v1",
+              commit:process.env.TARGET_SHA,
+              wallet:{address:wallet.address,chainId:wallet.chainId,balanceWei:wallet.balanceWei,balanceOG:wallet.balanceOG,funding:wallet.funding},
+              compute:{configured:config.computeConfigured,transport:config.computeTransport,model:config.computeModel},
+              demoWallet:config.demoWallet,
+              anonymousRoutingRejected:true
+            },null,2)+"\n");'
+      - name: Verify live private proof route when CI is admitted
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun -e '
+            import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+            const config=await Bun.file("artifacts/config.json").json();
+            if(config.computeConfigured!==true){
+              await Bun.write("artifacts/proof-route-summary.json",JSON.stringify({configured:false,verified:false,skipped:true,reason:"ZG_* not configured"},null,2)+"\n");
+              process.exit(0);
+            }
+            if(config.walletAllowlistEnabled===true){
+              await Bun.write("artifacts/proof-route-summary.json",JSON.stringify({configured:true,verified:false,skipped:true,reason:"human demo wallet allowlist enabled; CI never receives its private key"},null,2)+"\n");
+              process.exit(0);
+            }
+            const account=privateKeyToAccount(generatePrivateKey());
+            const challengeResponse=await fetch(`${process.env.BASE_URL}/api/wallet/challenge?address=${account.address}`);
+            const challenge=await challengeResponse.json();
+            if(challengeResponse.status!==200)throw new Error(`challenge ${challengeResponse.status}`);
+            const signature=await account.signMessage({message:challenge.message});
+            const response=await fetch(`${process.env.BASE_URL}/api/live/proof-route`,{
+              method:"POST",
+              headers:{"content-type":"application/json"},
+              body:JSON.stringify({address:account.address,message:challenge.message,signature,taskClass:"financial-side-effect"})
+            });
+            const route=await response.json();
+            const hash=v=>typeof v==="string"&&/^0x[0-9a-f]{64}$/i.test(v);
+            if(response.status!==200||route.live!==true||route.route?.taskClass!=="financial-side-effect"||route.route?.riskClass!=="high"||route.route?.trustMode!=="private"||route.route?.model!=="0GM-1.0-35B-A3B"||route.route?.requiredProof?.privateInference!==true||!hash(route.routePolicyHash)||!hash(route.receiptHash))throw new Error(`proof route failed ${response.status}: ${JSON.stringify(route)}`);
+            await Bun.write("artifacts/proof-route-summary.json",JSON.stringify({configured:true,verified:true,model:route.route.model,trustMode:route.route.trustMode,riskClass:route.route.riskClass,routePolicyHash:route.routePolicyHash,receiptHash:route.receiptHash},null,2)+"\n");'
+      - name: Retain readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiptgate-runtime-readiness-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
