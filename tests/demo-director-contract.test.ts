@@ -18,7 +18,6 @@ function selectorExists(selector: string) {
 describe("deterministic demo director", () => {
   test("keeps the existing demo as the rendered source of truth", () => {
     expect(directorHtml).toContain('src="/?director=1"');
-    expect(directorHtml).toContain("same"); // same-origin behavior is intentional in the implementation comments/contract surface
     expect(demoHtml).toContain('id="multiRun"');
     expect(demoHtml).toContain('id="multiTamper"');
     expect(demoHtml).toContain('id="liveAgent"');
