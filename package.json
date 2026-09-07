@@ -14,6 +14,7 @@
     "probe:0g-live": "bun run adapters/0g/live-probe.ts",
     "probe:0g-compute-live": "bun run adapters/0g/compute/live-canary.ts",
     "probe:0g-router": "bun run scripts/0g-router-preflight.ts",
+    "runtime:status": "bun run scripts/runtime-unlock-status.ts",
     "demo:doctor": "bun run scripts/demo-doctor.ts",
     "demo:prepare": "bash scripts/demo.sh",
     "demo:serve": "bun run demo/server.ts",
