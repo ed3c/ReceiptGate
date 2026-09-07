@@ -30,29 +30,34 @@ jobs:
           bun-version: latest
       - name: Install pinned dependencies for wallet smoke signer
         run: bun install --frozen-lockfile
-      - name: Wait for exact Vercel production commit
+      - name: Wait for exact Vercel production commit on both health routes
         run: |
           set -euo pipefail
           mkdir -p artifacts
           ready=0
           for _ in $(seq 1 72); do
-            code=$(curl -sS -o artifacts/health.json -w '%{http_code}' "$BASE_URL/api/healthz" || true)
-            if [[ "$code" == "200" ]]; then
-              if bun -e 'const h=await Bun.file("artifacts/health.json").json();process.exit(h.ok===true&&h.gitCommit===process.env.TARGET_SHA?0:1)' >/dev/null 2>&1; then
+            api_code=$(curl -sS -o artifacts/api-health.json -w '%{http_code}' "$BASE_URL/api/healthz" || true)
+            rewrite_code=$(curl -sS -o artifacts/health-rewrite.json -w '%{http_code}' "$BASE_URL/healthz" || true)
+            if [[ "$api_code" == "200" && "$rewrite_code" == "200" ]]; then
+              if bun -e '
+                const a=await Bun.file("artifacts/api-health.json").json();
+                const b=await Bun.file("artifacts/health-rewrite.json").json();
+                process.exit(a.ok===true&&b.ok===true&&a.gitCommit===process.env.TARGET_SHA&&b.gitCommit===process.env.TARGET_SHA?0:1);' >/dev/null 2>&1; then
                 ready=1
                 break
               fi
             fi
             sleep 5
           done
-          cat artifacts/health.json || true
+          echo 'api health:'; cat artifacts/api-health.json || true
+          echo; echo 'health rewrite:'; cat artifacts/health-rewrite.json || true
           test "$ready" = 1
       - name: Public HTTPS smoke
         run: |
           set -euo pipefail
           root_code=$(curl -sS -o artifacts/root.html -w '%{http_code}' "$BASE_URL/")
-          api_health_code=$(curl -sS -o artifacts/api-health.json -w '%{http_code}' "$BASE_URL/api/healthz")
-          health_code=$(curl -sS -o artifacts/health-rewrite.json -w '%{http_code}' "$BASE_URL/healthz")
+          api_health_code=200
+          health_code=200
           config_code=$(curl -sS -o artifacts/config.json -w '%{http_code}' "$BASE_URL/api/config")
           normal_code=$(curl -sS -o artifacts/demo-normal.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":false}' "$BASE_URL/api/demo")
           tamper_code=$(curl -sS -o artifacts/demo-tamper.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":true}' "$BASE_URL/api/demo")
