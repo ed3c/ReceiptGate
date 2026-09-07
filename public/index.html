@@ -3,52 +3,226 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ReceiptGate — Verify before agents act</title>
+<meta name="theme-color" content="#000000" />
+<title>ReceiptGate - No proof. No action.</title>
 <style>
-:root{color-scheme:dark;--bg:#080b10;--panel:#10151d;--line:#253041;--muted:#8f9bad;--text:#f5f7fa;--ok:#7fffb1;--bad:#ff7c87;--accent:#a9c7ff;--warn:#ffd37f}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% -10%,#162033 0,transparent 36%),var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:var(--text)}main{max-width:1120px;margin:auto;padding:36px 22px 64px}.eyebrow{font:600 12px ui-monospace,SFMono-Regular,monospace;letter-spacing:.16em;color:var(--accent)}h1{font-size:clamp(40px,7vw,74px);line-height:.94;margin:14px 0 16px;letter-spacing:-.055em}.sub{max-width:820px;color:var(--muted);font-size:17px;line-height:1.55}.statusbar,.buttons{display:flex;gap:10px;flex-wrap:wrap}.statusbar{margin:26px 0}.pill{border:1px solid var(--line);background:#0b1017;padding:8px 11px;border-radius:999px;font:600 12px ui-monospace,SFMono-Regular,monospace}.pill.ok{border-color:#245f42;color:var(--ok)}.pill.off{color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{background:linear-gradient(180deg,#111721,#0d1219);border:1px solid var(--line);border-radius:18px;padding:19px;box-shadow:0 18px 50px #0006}.panel.wide{grid-column:1/-1}.panel h2{margin:0 0 6px;font-size:15px}.hint{color:var(--muted);font-size:13px;line-height:1.5}.request{margin:16px 0;padding:15px;border:1px solid var(--line);border-radius:13px;background:#090d13;font-family:ui-monospace,SFMono-Regular,monospace}.request strong{font-size:28px}button{appearance:none;border:1px solid #41516b;background:#182235;color:#fff;font-weight:700;padding:10px 13px;border-radius:11px;cursor:pointer}button:hover{background:#22304a}button.attack{border-color:#70404a;background:#2b161b;color:#ffc4c9}.rows{margin-top:14px}.row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid #1e2836;font:13px ui-monospace,SFMono-Regular,monospace}.row span:first-child{color:var(--muted)}.yes{color:var(--ok)}.no{color:var(--bad)}.warn{color:var(--warn)}.final{margin-top:16px;border-radius:14px;padding:16px;text-align:center;font-weight:900;font-size:22px;letter-spacing:.08em;background:#10231a;color:var(--ok);border:1px solid #265f43}.final.block{background:#281519;color:var(--bad);border-color:#6d3039}.final.wait{background:#171c27;color:var(--accent);border-color:#344761}.log{white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;background:#070a0f;border:1px solid #1a2432;border-radius:12px;padding:11px;color:#b8c2d1;font:11px/1.5 ui-monospace,SFMono-Regular,monospace;margin-top:11px}.wallet{font:12px ui-monospace,SFMono-Regular,monospace;color:var(--accent);word-break:break-all;margin:10px 0}.note{margin-top:11px;border-left:2px solid #405b82;padding-left:10px;color:var(--muted);font-size:12px;line-height:1.5}.trace{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;gap:10px;margin:18px 0}.stage{border:1px solid var(--line);border-radius:13px;background:#090d13;padding:14px;min-height:126px}.stage .name{font:700 12px ui-monospace,SFMono-Regular,monospace;color:var(--accent);letter-spacing:.06em}.stage .value{font-size:20px;font-weight:800;margin:10px 0 4px}.stage .meta{font:11px/1.5 ui-monospace,SFMono-Regular,monospace;color:var(--muted);word-break:break-word}.arrow{align-self:center;color:#60738f;font-size:22px}.handoff-pass{border-color:#245f42}.handoff-fail{border-color:#6d3039;background:#201216}@media(max-width:820px){.grid{grid-template-columns:1fr}.panel.wide{grid-column:auto}.trace{grid-template-columns:1fr}.arrow{text-align:center;transform:rotate(90deg)}h1{font-size:48px}}
+:root{
+  color-scheme:dark;
+  --paper:#000000;
+  --paper-2:#070707;
+  --paper-3:#101010;
+  --ink:#fefefe;
+  --muted:#9b9b9b;
+  --line:#2a2a2a;
+  --line-hi:#474747;
+  --og:#9200e1;
+  --og-1:#b75fff;
+  --og-2:#cb8aff;
+  --og-3:#e3c1ff;
+  --danger:#ff5468;
+  --danger-deep:#2a080d;
+  --shadow:0 28px 90px rgba(0,0,0,.52);
+  --mono:"Geist Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --sans:"Regola Pro","Inter",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);min-height:100vh}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.28;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:44px 44px;mask-image:linear-gradient(to bottom,#000,transparent 78%)}
+button,summary{font:inherit}
+button{appearance:none;border:1px solid var(--line-hi);background:var(--ink);color:#000;font-weight:800;padding:12px 16px;border-radius:4px;cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease}
+button:hover{transform:translateY(-2px);background:var(--og-3);border-color:var(--og-3)}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--og-2);outline-offset:3px}
+button.attack{background:transparent;color:var(--danger);border-color:rgba(255,84,104,.58)}
+button.attack:hover{background:var(--danger);color:#000;border-color:var(--danger)}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+main{width:min(1240px,calc(100% - 36px));margin:0 auto;padding:30px 0 92px;position:relative}
+.presentation-bar{position:sticky;top:10px;z-index:30;margin:0 auto 28px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:10px 12px;border:1px solid var(--line);background:rgba(0,0,0,.88);backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.4)}
+.brand-lockup{display:flex;gap:10px;align-items:center;font:800 12px var(--mono);letter-spacing:.06em;white-space:nowrap}.brand-mark{display:grid;place-items:center;width:29px;height:29px;background:var(--og);color:white;font-weight:900}.cue{min-width:0}.cue-label{font:700 10px var(--mono);letter-spacing:.18em;color:var(--og-2);text-transform:uppercase}.cue-copy{margin-top:3px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cue-step{font:800 12px var(--mono);color:var(--muted);white-space:nowrap}
+.hero{min-height:520px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:32px;align-items:end;border-bottom:1px solid var(--line);padding:52px 0 42px;position:relative;overflow:hidden}.hero:after{content:"";position:absolute;right:-4%;top:5%;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,var(--og) 0,rgba(146,0,225,.36) 28%,transparent 69%);filter:blur(6px);opacity:.8;pointer-events:none}.hero-copy{position:relative;z-index:1}.kicker{font:800 11px var(--mono);letter-spacing:.16em;color:var(--og-2);text-transform:uppercase}.hero h1{font-size:clamp(64px,10vw,142px);line-height:.79;letter-spacing:-.075em;margin:18px 0 26px;max-width:900px}.hero h1 span{color:var(--og-1)}.hero-sub{font-size:clamp(17px,2vw,23px);line-height:1.35;max-width:680px;margin:0;color:#d7d7d7}.hero-side{position:relative;z-index:1;align-self:center;border-left:1px solid var(--og);padding:18px 0 18px 22px}.manifesto{font-size:clamp(21px,2.5vw,34px);line-height:1.04;letter-spacing:-.035em;margin:0 0 24px}.manifesto strong{color:var(--og-2)}.hero-facts{display:grid;gap:10px;font:700 11px/1.45 var(--mono);color:var(--muted)}.hero-fact{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:9px}.hero-fact b{color:var(--ink);text-align:right}
+.statusbar{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);margin:28px 0 60px;background:var(--paper-2)}.pill{padding:14px 15px;border-right:1px solid var(--line);font:800 10px var(--mono);letter-spacing:.08em;color:var(--muted);min-height:46px;display:flex;align-items:center}.pill:last-child{border-right:0}.pill:before{content:"○";margin-right:9px;color:#676767}.pill.ok{color:var(--ink)}.pill.ok:before{content:"✓";color:var(--og-2)}.pill.off:before{content:"○"}
+.section-head{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.55fr);gap:28px;align-items:end;margin:0 0 22px}.section-head h2{font-size:clamp(34px,5vw,66px);line-height:.92;letter-spacing:-.055em;margin:0}.section-head p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}.section-head strong{color:var(--ink)}
+.stage-shell{border:1px solid var(--line);background:var(--paper-2);box-shadow:var(--shadow);position:relative;overflow:hidden}.stage-shell:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--og)}.stage-top{display:grid;grid-template-columns:1fr auto;gap:18px;padding:24px 26px;border-bottom:1px solid var(--line);align-items:center}.stage-title{font:800 12px var(--mono);letter-spacing:.09em}.stage-sub{font-size:13px;color:var(--muted);margin-top:6px;max-width:750px;line-height:1.5}.buttons{display:flex;gap:9px;flex-wrap:wrap}
+.poster-line{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;padding:18px 26px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(146,0,225,.13),transparent 52%)}.poster-line blockquote{margin:0;font-size:clamp(20px,2.5vw,34px);font-weight:800;letter-spacing:-.035em;line-height:1.02}.poster-line blockquote span{color:var(--og-2)}.side-effect-meter{text-align:right}.meter-label{font:800 9px var(--mono);letter-spacing:.15em;color:var(--muted)}.meter-value{font:900 clamp(40px,6vw,76px)/.9 var(--mono);color:var(--og-1);transition:color .2s ease,transform .2s ease}.meter-value.danger{color:var(--danger)}
+.trace{display:grid;grid-template-columns:1fr 44px 1fr 44px 1fr 44px 1fr 44px 1fr;align-items:stretch;gap:0;padding:28px 26px}.stage{border:1px solid var(--line);background:#050505;padding:16px 15px;min-height:155px;position:relative;overflow:hidden;transition:border-color .25s ease,background .25s ease,transform .25s ease}.stage:after{content:"";position:absolute;left:0;right:100%;bottom:0;height:3px;background:var(--og-1);transition:right .45s ease}.stage.active{border-color:var(--og);background:rgba(146,0,225,.09);transform:translateY(-3px)}.stage.active:after,.stage.done:after{right:0}.stage.done{border-color:#5d2478}.stage.fail{border-color:var(--danger);background:var(--danger-deep)}.stage.fail:after{right:0;background:var(--danger)}.stage .name{font:800 10px var(--mono);color:var(--og-2);letter-spacing:.1em}.stage .value{font-size:clamp(18px,2vw,27px);font-weight:900;margin:22px 0 8px;letter-spacing:-.035em}.stage .meta{font:11px/1.55 var(--mono);color:var(--muted);word-break:break-word}.arrow{align-self:center;text-align:center;color:#626262;font:900 22px var(--mono);position:relative}.flowing .arrow{color:var(--og-1);animation:arrowPulse .85s ease-in-out infinite alternate}.handoff-pass{border-color:var(--og)!important}.handoff-fail{border-color:var(--danger)!important;background:var(--danger-deep)!important}
+.verdict-grid{display:grid;grid-template-columns:1fr 330px;border-top:1px solid var(--line)}.rows{padding:12px 26px}.row{display:flex;justify-content:space-between;gap:18px;padding:11px 0;border-bottom:1px solid #202020;font:800 11px var(--mono)}.row:last-child{border-bottom:0}.row span:first-child{color:var(--muted)}.yes{color:var(--og-2)}.no{color:var(--danger)}.warn{color:#e7c1ff}.final{display:grid;place-items:center;min-height:100%;padding:28px 20px;text-align:center;font:900 clamp(24px,3vw,42px) var(--sans);letter-spacing:-.04em;background:rgba(146,0,225,.10);color:var(--ink);border-left:1px solid var(--line);transition:background .25s ease,color .25s ease}.final:before{content:"✓";display:block;font:900 18px var(--mono);color:var(--og-2);margin-bottom:8px}.final.block{background:var(--danger-deep);color:var(--danger)}.final.block:before{content:"×";color:var(--danger)}.final.wait{background:#080808;color:#aaa}.final.wait:before{content:"○";color:#777}
+.explain-band{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}.explain-card{padding:18px 20px;border-right:1px solid var(--line)}.explain-card:last-child{border-right:0}.explain-card b{display:block;font-size:15px;margin-bottom:6px}.explain-card p{margin:0;font-size:12px;line-height:1.5;color:var(--muted)}.explain-card code{color:var(--og-2);font-family:var(--mono)}
+details.evidence{border-top:1px solid var(--line);background:#030303}details.evidence summary{cursor:pointer;padding:14px 26px;color:var(--muted);font:800 10px var(--mono);letter-spacing:.1em;list-style:none}details.evidence summary::-webkit-details-marker{display:none}details.evidence summary:after{content:" +";color:var(--og-2)}details.evidence[open] summary:after{content:" -"}.log{white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;background:#030303;border-top:1px solid #171717;padding:16px 26px;color:#b9b9b9;font:11px/1.55 var(--mono);margin:0}
+.proof-stack{margin-top:74px}.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}.panel{background:var(--paper-2);border:1px solid var(--line);padding:22px;min-height:310px;position:relative;overflow:hidden}.panel:before{content:"";position:absolute;top:0;left:0;width:56px;height:2px;background:var(--og)}.panel.wide{grid-column:1/-1}.panel h3{font-size:20px;line-height:1.05;letter-spacing:-.025em;margin:0 0 8px}.hint{color:var(--muted);font-size:12px;line-height:1.55}.request{margin:18px 0;padding:16px;border:1px solid var(--line);background:#030303;font-family:var(--mono);position:relative}.request:after{content:"BUDGET $300";position:absolute;right:12px;top:10px;color:var(--og-2);font:800 9px var(--mono);letter-spacing:.08em}.request strong{display:block;font-size:43px;letter-spacing:-.06em;margin:8px 0}.wallet{font:12px var(--mono);color:var(--og-2);word-break:break-all;margin:16px 0 8px}.note{margin-top:14px;border-left:2px solid var(--og);padding-left:11px;color:var(--muted);font-size:11px;line-height:1.5}.panel .final{margin-top:16px;min-height:auto;border:1px solid var(--line);font-size:26px;padding:16px}.panel .rows{padding:5px 0 0}.panel details.evidence{margin:16px -22px -22px}.panel details.evidence summary{padding-left:22px}.panel .log{padding-left:22px;padding-right:22px}
+.takeaway{margin-top:72px;border-top:1px solid var(--line);padding-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:34px}.takeaway h2{font-size:clamp(40px,6vw,80px);line-height:.87;letter-spacing:-.06em;margin:0}.takeaway h2 span{color:var(--og-1)}.talk-track{display:grid;gap:0;border:1px solid var(--line)}.talk-line{padding:16px 18px;border-bottom:1px solid var(--line);font-size:14px;line-height:1.45}.talk-line:last-child{border-bottom:0}.talk-line b{font:800 10px var(--mono);letter-spacing:.1em;color:var(--og-2);display:block;margin-bottom:5px}
+.micro-footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;color:#646464;font:10px var(--mono);letter-spacing:.05em}
+@keyframes arrowPulse{from{opacity:.35;transform:translateX(-2px)}to{opacity:1;transform:translateX(2px)}}
+@keyframes cueFlash{0%{color:var(--ink)}50%{color:var(--og-2)}100%{color:var(--ink)}}
+@keyframes verdictIn{from{opacity:.2;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
+.cue-copy.changed{animation:cueFlash .6s ease}.final.changed,.meter-value.changed{animation:verdictIn .38s ease}
+@media(max-width:980px){.hero{grid-template-columns:1fr;min-height:auto}.hero-side{max-width:620px}.trace{grid-template-columns:1fr}.arrow{padding:8px;transform:rotate(90deg)}.verdict-grid{grid-template-columns:1fr}.final{border-left:0;border-top:1px solid var(--line)}.grid{grid-template-columns:1fr}.panel.wide{grid-column:auto}.takeaway{grid-template-columns:1fr}.explain-band{grid-template-columns:1fr}.explain-card{border-right:0;border-bottom:1px solid var(--line)}.explain-card:last-child{border-bottom:0}}
+@media(max-width:720px){main{width:min(100% - 22px,1240px)}.presentation-bar{top:4px;grid-template-columns:auto 1fr}.cue-step{display:none}.brand-lockup span:last-child{display:none}.hero{padding-top:34px}.hero h1{font-size:clamp(58px,19vw,92px)}.statusbar{grid-template-columns:1fr 1fr}.pill:nth-child(2){border-right:0}.pill:nth-child(-n+2){border-bottom:1px solid var(--line)}.section-head{grid-template-columns:1fr}.stage-top{grid-template-columns:1fr}.poster-line{grid-template-columns:1fr}.side-effect-meter{text-align:left}.trace,.rows{padding-left:15px;padding-right:15px}.meter-value{font-size:58px}.micro-footer{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 </style>
 </head>
-<body><main>
-<div class="eyebrow">RECEIPTGATE / PUBLIC 0G DEMO</div>
-<h1>No proof.<br/>No action.</h1>
-<p class="sub">A public execution firewall for autonomous agents. Wallet authorization is verified on 0G Galileo. Two live 0G Compute roles collaborate. ReceiptGate still owns the final deterministic authorization boundary.</p>
-<div class="statusbar"><span class="pill ok">CORE · GHA VERIFIED</span><span id="computePill" class="pill off">0G COMPUTE · CHECKING</span><span id="agentPill" class="pill off">AGENTIC ID · CHECKING</span><span id="walletPill" class="pill off">WALLET · DISCONNECTED</span></div>
-<div class="grid">
-<section class="panel wide">
-  <h2>LIVE MULTI-AGENT · Procurement → Risk → ReceiptGate</h2>
-  <div class="hint">Both agents are real 0G Compute calls. Agent A proposes. Agent B reviews. Neither can execute. ReceiptGate compares the exact handoff hash and applies deterministic policy.</div>
-  <div class="buttons" style="margin-top:14px"><button id="multiRun">Run live multi-agent</button><button id="multiTamper" class="attack">Attack handoff ×10</button></div>
-  <div id="multiTrace" class="trace">
-    <div class="stage"><div class="name">AGENT A · PROCUREMENT</div><div class="value">READY</div><div class="meta">0G Compute candidate proposal</div></div>
-    <div class="arrow">→</div>
-    <div class="stage"><div class="name">HANDOFF</div><div class="value">—</div><div class="meta">candidateHash must remain identical</div></div>
-    <div class="arrow">→</div>
-    <div class="stage"><div class="name">AGENT B · RISK</div><div class="value">READY</div><div class="meta">0G Compute independent review</div></div>
+<body>
+<main>
+  <div class="presentation-bar" aria-live="polite">
+    <div class="brand-lockup"><span class="brand-mark">ØG</span><span>RECEIPTGATE</span></div>
+    <div class="cue"><div class="cue-label">Presenter cue</div><div id="presenterCue" class="cue-copy">Start here: autonomous agents can propose, but only verified evidence can unlock action.</div></div>
+    <div id="cueStep" class="cue-step">READY</div>
   </div>
-  <div id="multiRows" class="rows"></div>
-  <div id="multiFinal" class="final wait">READY</div>
-  <div class="note">The final purchase executor is a bounded demo side-effect counter, not financial settlement. The two inference calls and Galileo signature verification are live. Agentic ID candidate-bound service proof is the next proof upgrade, not falsely claimed here.</div>
-  <div id="multiState" class="log">Connect a wallet, then run the normal path or tamper the Agent A → Agent B handoff.</div>
-</section>
-<section class="panel"><h2>ReceiptGate execution fixture</h2><div class="hint">Deterministic planted positive/negative oracle. Fixture evidence is never presented as live 0G proof.</div><div class="request"><div>CANDIDATE</div><strong id="amount">$247</strong><div>10,000 GPU inference credits · hard budget $300</div></div><div class="buttons"><button id="run">Run fixture</button><button class="attack" id="tamper">Tamper $247 → $2,470</button></div><div id="rows" class="rows"></div><div id="final" class="final wait">READY</div><div id="receipt" class="log">Run a scenario to inspect the deterministic execution receipt.</div></section>
-<section class="panel"><h2>Your wallet · 0G Galileo</h2><div class="hint">Connect MetaMask/Rabby-compatible EIP-1193 wallet. Your wallet authorizes the exact sponsored workflow and never reveals a private key.</div><div id="walletAddress" class="wallet">No wallet connected</div><div id="walletBalance" class="hint">Balance: —</div><div class="buttons" style="margin-top:12px"><button id="connectWallet">Connect wallet</button><button id="signWallet">Sign authorization</button><button id="anchorWallet">Optional on-chain anchor</button></div><div id="walletState" class="log">The optional anchor is a 0-value self transaction on Galileo; your wallet pays only testnet gas. It is not payment for 0G Compute and not Agentic ID proof.</div></section>
-<section class="panel"><h2>Live 0G Compute · single role</h2><div class="hint">A direct live inference path retained for component-level inspection. The multi-agent demo above performs two separate role calls.</div><div class="buttons"><button id="liveCompute">Sign & run live inference</button></div><div class="note">Sponsored mode: ReceiptGate's provider account pays Compute. Your connected wallet proves authorization.</div><div id="computeState" class="log">Not checked.</div></section>
-<section class="panel"><h2>Live Agentic ID identity proof</h2><div class="hint">Read-only signed <code>/hello</code>: signer identity, proof freshness, and on-chain data roots. This proves the running identity; it is not yet claimed as the cryptographic proof of the multi-agent candidate.</div><div class="buttons"><button id="liveAgent">Verify signed /hello</button></div><div id="agentState" class="log">Not checked.</div></section>
-</div>
+
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="kicker">ReceiptGate / Public 0G verification demo</div>
+      <h1>No proof.<br/><span>No action.</span></h1>
+      <p class="hero-sub">Autonomous agents may propose. Evidence verifies. Deterministic policy alone makes side effects reachable.</p>
+    </div>
+    <aside class="hero-side">
+      <p class="manifesto">Compute <strong>proposes.</strong><br/>Proof <strong>verifies.</strong><br/>Policy <strong>authorizes.</strong></p>
+      <div class="hero-facts">
+        <div class="hero-fact"><span>CHAIN</span><b>0G Galileo / 16602</b></div>
+        <div class="hero-fact"><span>LIVE ROLES</span><b>Procurement + Risk</b></div>
+        <div class="hero-fact"><span>HARD BUDGET</span><b>$300</b></div>
+        <div class="hero-fact"><span>EXECUTION RULE</span><b>proof PASS + policy ALLOW</b></div>
+      </div>
+    </aside>
+  </header>
+
+  <div class="statusbar" aria-label="Runtime status">
+    <span class="pill ok">CORE / GHA VERIFIED</span>
+    <span id="computePill" class="pill off">0G COMPUTE / CHECKING</span>
+    <span id="agentPill" class="pill off">AGENTIC ID / CHECKING</span>
+    <span id="walletPill" class="pill off">WALLET / DISCONNECTED</span>
+  </div>
+
+  <section aria-labelledby="live-heading">
+    <div class="section-head">
+      <h2 id="live-heading">Watch the trust chain move.</h2>
+      <p>This is the judge path. <strong>One wallet authorization, two real 0G Compute roles, one exact handoff hash, one deterministic execution gate.</strong></p>
+    </div>
+
+    <div class="stage-shell">
+      <div class="stage-top">
+        <div>
+          <div class="stage-title">LIVE MULTI-AGENT / PROCUREMENT → RISK → RECEIPTGATE</div>
+          <div class="stage-sub">Agent A proposes. Agent B advises. Neither can execute. ReceiptGate compares the exact handoff and keeps final authority.</div>
+        </div>
+        <div class="buttons">
+          <button id="multiRun">Run live verified path</button>
+          <button id="multiTamper" class="attack">Attack handoff x10</button>
+        </div>
+      </div>
+
+      <div class="poster-line">
+        <blockquote id="posterMessage">Even two valid agents cannot authorize a <span>corrupted handoff.</span></blockquote>
+        <div class="side-effect-meter"><div class="meter-label">SIDE EFFECT CALLS</div><div id="sideEffectHero" class="meter-value">0</div></div>
+      </div>
+
+      <div id="multiTrace" class="trace">
+        <div class="stage"><div class="name">WALLET</div><div class="value">READY</div><div class="meta">Sign one exact bounded workflow</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="name">AGENT A / PROCUREMENT</div><div class="value">READY</div><div class="meta">0G Compute candidate proposal</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="name">HANDOFF HASH</div><div class="value">READY</div><div class="meta">Exact candidate must survive the boundary</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="name">AGENT B / RISK</div><div class="value">READY</div><div class="meta">Independent advisory review</div></div>
+        <div class="arrow">→</div>
+        <div class="stage"><div class="name">RECEIPTGATE</div><div class="value">LOCKED</div><div class="meta">Deterministic policy owns authority</div></div>
+      </div>
+
+      <div class="verdict-grid">
+        <div id="multiRows" class="rows"></div>
+        <div id="multiFinal" class="final wait">READY</div>
+      </div>
+
+      <div class="explain-band">
+        <div class="explain-card"><b>Wallet authorizes bytes.</b><p>Galileo verifies the EIP-191 signature. No browser or Vercel private key is exposed.</p></div>
+        <div class="explain-card"><b>Agents do not own authority.</b><p>Procurement proposes. Risk advises. The handoff carries an exact <code>candidateHash</code>.</p></div>
+        <div class="explain-card"><b>Side effect is the oracle.</b><p>Success is not a green badge. It is whether the bounded side-effect counter remains 0 or becomes 1.</p></div>
+      </div>
+
+      <details class="evidence">
+        <summary>RAW LIVE RECEIPT / JUDGE EVIDENCE</summary>
+        <pre id="multiState" class="log">Connect a wallet, then run the verified path or corrupt the Agent A to Agent B handoff.</pre>
+      </details>
+    </div>
+  </section>
+
+  <section class="proof-stack" aria-labelledby="proof-heading">
+    <div class="section-head">
+      <h2 id="proof-heading">Every claim has an inspectable proof surface.</h2>
+      <p>The main story stays readable from across the room. Raw receipts and component-level evidence remain one click away.</p>
+    </div>
+
+    <div class="grid">
+      <article class="panel">
+        <h3>Deterministic attack oracle</h3>
+        <div class="hint">Planted positive and negative control. Fixture evidence is never presented as live 0G proof.</div>
+        <div class="request"><div>CANDIDATE</div><strong id="amount">$247</strong><div>10,000 GPU inference credits</div></div>
+        <div class="buttons"><button id="run">Run fixture</button><button class="attack" id="tamper">Tamper $247 to $2,470</button></div>
+        <div id="rows" class="rows"></div>
+        <div id="final" class="final wait">READY</div>
+        <details class="evidence"><summary>FIXTURE RECEIPT</summary><pre id="receipt" class="log">Run a scenario to inspect the deterministic execution receipt.</pre></details>
+      </article>
+
+      <article class="panel">
+        <h3>Your wallet on 0G Galileo</h3>
+        <div class="hint">MetaMask or Rabby compatible EIP-1193 wallet. It signs the exact sponsored workflow and never reveals a private key.</div>
+        <div id="walletAddress" class="wallet">No wallet connected</div>
+        <div id="walletBalance" class="hint">Balance: -</div>
+        <div class="buttons" style="margin-top:16px"><button id="connectWallet">Connect wallet</button><button id="signWallet">Sign authorization</button><button id="anchorWallet" class="ghost">Optional anchor</button></div>
+        <div class="note">The optional anchor is a 0-value self transaction on Galileo. It is not payment for 0G Compute and not Agentic ID proof.</div>
+        <details class="evidence"><summary>WALLET AUTHORIZATION RECEIPT</summary><pre id="walletState" class="log">Waiting for wallet interaction.</pre></details>
+      </article>
+
+      <article class="panel">
+        <h3>Live 0G Compute / single role</h3>
+        <div class="hint">Direct component inspection. The main multi-agent path performs two separate role calls.</div>
+        <div class="buttons" style="margin-top:18px"><button id="liveCompute">Sign and run live inference</button></div>
+        <div class="note">Sponsored mode: ReceiptGate's provider account pays Compute. Your connected wallet proves authorization.</div>
+        <details class="evidence" open><summary>COMPUTE EVIDENCE</summary><pre id="computeState" class="log">Not checked.</pre></details>
+      </article>
+
+      <article class="panel">
+        <h3>Live Agentic ID identity proof</h3>
+        <div class="hint">Read-only signed /hello verifies signer identity, freshness and on-chain data roots.</div>
+        <div class="buttons" style="margin-top:18px"><button id="liveAgent">Verify signed /hello</button></div>
+        <div class="note">This proves the running identity. It is not falsely claimed as cryptographic proof of the current multi-agent candidate.</div>
+        <details class="evidence" open><summary>AGENTIC ID EVIDENCE</summary><pre id="agentState" class="log">Not checked.</pre></details>
+      </article>
+    </div>
+  </section>
+
+  <section class="takeaway" aria-labelledby="takeaway-heading">
+    <h2 id="takeaway-heading">You do not trust the agents.<br/><span>You verify the path.</span></h2>
+    <div class="talk-track" aria-label="Presenter memory aid">
+      <div class="talk-line"><b>SAY THIS FIRST</b>Agents are becoming economic participants. ReceiptGate makes execution unreachable until evidence and policy both pass.</div>
+      <div class="talk-line"><b>THEN SHOW THE NORMAL PATH</b>One wallet authorizes one bounded action. Two 0G agents collaborate. ReceiptGate alone can unlock the side effect.</div>
+      <div class="talk-line"><b>THEN ATTACK IT</b>The proof can still be real while the handoff is corrupted. Hash mismatch means side-effect calls stay zero.</div>
+      <div class="talk-line"><b>CLOSE HERE</b>Compute proposes. Proof verifies. Policy authorizes. No proof, no action.</div>
+    </div>
+  </section>
+
+  <footer class="micro-footer"><span>PUBLIC PRODUCTION DEMO / receiptgate.vercel.app</span><span>PROOF BOUNDARIES ARE LABELED, NOT IMPLIED</span></footer>
+</main>
 <script>
 const $=id=>document.getElementById(id),pretty=x=>JSON.stringify(x,null,2);let cfg=null,wallet=null,lastAuth=null,lastChallenge=null,lastWalletReceipt=null;
-async function loadConfig(){cfg=await fetch('/api/config').then(r=>r.json());$('computePill').textContent='0G COMPUTE · '+(cfg.computeConfigured?'CONFIGURED':'NOT CONFIGURED');$('computePill').className='pill '+(cfg.computeConfigured?'ok':'off');$('agentPill').textContent='AGENTIC ID · '+(cfg.agentConfigured?'CONFIGURED':'NOT CONFIGURED');$('agentPill').className='pill '+(cfg.agentConfigured?'ok':'off');return cfg;}
-async function run(tamper){$('final').textContent='VERIFYING…';$('final').className='final wait';const x=await fetch('/api/demo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tamper})}).then(r=>r.json());$('amount').textContent='$'+Number(x.displayedAmount).toLocaleString();const v=x.receipt.verification,p=x.receipt.policy,e=x.receipt.execution,row=(k,val,ok)=>`<div class="row"><span>${k}</span><b class="${ok?'yes':'no'}">${val}</b></div>`;$('rows').innerHTML=row('Proof authenticity',v.checks.authenticity?'PASS':'FAIL',v.checks.authenticity)+row('Candidate binding',v.checks.candidateBinding?'PASS':'FAIL',v.checks.candidateBinding)+row('Freshness',v.checks.freshness?'PASS':'FAIL',v.checks.freshness)+row('Policy ≤ $300',p.allowed?'PASS':(v.ok?'DENY':'NOT REACHED'),p.allowed)+row('Side-effect calls',String(x.sideEffectCalls),x.sideEffectCalls===1);const ok=e.status==='executed';$('final').textContent=ok?'EXECUTED ✓':'ACTION BLOCKED';$('final').className='final'+(ok?'':' block');$('receipt').textContent=pretty(x);}
+const cueCopy=$('presenterCue'),cueStep=$('cueStep');
+function setCue(step,text){cueStep.textContent=step;cueCopy.textContent=text;cueCopy.classList.remove('changed');void cueCopy.offsetWidth;cueCopy.classList.add('changed');}
+function setMeter(value,bad=false){const el=$('sideEffectHero');el.textContent=String(value);el.className='meter-value'+(bad?' danger':'');el.classList.remove('changed');void el.offsetWidth;el.classList.add('changed');}
+function row(k,val,ok){return `<div class="row"><span>${k}</span><b class="${ok?'yes':'no'}">${val}</b></div>`;}
+function stage(name,value,meta,cls=''){return `<div class="stage ${cls}"><div class="name">${name}</div><div class="value">${value}</div><div class="meta">${meta}</div></div>`;}
+function shortHash(h){return h?`${h.slice(0,10)}…${h.slice(-6)}`:'-';}
+function resetTrace(){ $('multiTrace').className='trace'; $('multiTrace').innerHTML=stage('WALLET','READY','Sign one exact bounded workflow')+'<div class="arrow">→</div>'+stage('AGENT A / PROCUREMENT','READY','0G Compute candidate proposal')+'<div class="arrow">→</div>'+stage('HANDOFF HASH','READY','Exact candidate must survive the boundary')+'<div class="arrow">→</div>'+stage('AGENT B / RISK','READY','Independent advisory review')+'<div class="arrow">→</div>'+stage('RECEIPTGATE','LOCKED','Deterministic policy owns authority'); }
+async function loadConfig(){cfg=await fetch('/api/config').then(r=>r.json());$('computePill').textContent='0G COMPUTE / '+(cfg.computeConfigured?'CONFIGURED':'NOT CONFIGURED');$('computePill').className='pill '+(cfg.computeConfigured?'ok':'off');$('agentPill').textContent='AGENTIC ID / '+(cfg.agentConfigured?'CONFIGURED':'NOT CONFIGURED');$('agentPill').className='pill '+(cfg.agentConfigured?'ok':'off');if(!cfg.computeConfigured)setCue('SETUP','UI is live. Provision ZG_* to unlock two real 0G Compute role calls.');return cfg;}
+async function run(tamper){setCue('CONTROL',tamper?'Plant the attack: change the candidate after proof binding.':'Run the planted positive control before the live path.');$('final').textContent='VERIFYING';$('final').className='final wait';const x=await fetch('/api/demo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tamper})}).then(r=>r.json());$('amount').textContent='$'+Number(x.displayedAmount).toLocaleString();const v=x.receipt.verification,p=x.receipt.policy,e=x.receipt.execution;$('rows').innerHTML=row('Proof authenticity',v.checks.authenticity?'PASS':'FAIL',v.checks.authenticity)+row('Candidate binding',v.checks.candidateBinding?'PASS':'FAIL',v.checks.candidateBinding)+row('Freshness',v.checks.freshness?'PASS':'FAIL',v.checks.freshness)+row('Policy <= $300',p.allowed?'PASS':(v.ok?'DENY':'NOT REACHED'),p.allowed)+row('Side-effect calls',String(x.sideEffectCalls),x.sideEffectCalls===1);const ok=e.status==='executed';$('final').textContent=ok?'EXECUTED':'ACTION BLOCKED';$('final').className='final'+(ok?'':' block');$('receipt').textContent=pretty(x);setCue(ok?'CONTROL PASS':'CONTROL BLOCK',ok?'The positive oracle proves the gate can execute when every invariant passes.':'A valid proof cannot authorize a modified candidate. Side-effect calls remain zero.');}
 function requireWallet(){if(!window.ethereum)throw new Error('Install a MetaMask/Rabby-compatible wallet');return window.ethereum;}
 async function ensureGalileo(){const eth=requireWallet(),c=cfg||await loadConfig();try{await eth.request({method:'wallet_switchEthereumChain',params:[{chainId:c.wallet.chainHex}]});}catch(e){if(e.code!==4902)throw e;await eth.request({method:'wallet_addEthereumChain',params:[{chainId:c.wallet.chainHex,chainName:'0G Galileo Testnet',nativeCurrency:c.wallet.nativeCurrency,rpcUrls:[c.wallet.rpcUrl],blockExplorerUrls:c.wallet.explorer?[c.wallet.explorer]:[]} ]});}}
 function format0G(hex){const v=BigInt(hex),whole=v/10n**18n,frac=(v%10n**18n).toString().padStart(18,'0').slice(0,4);return `${whole}.${frac} 0G`;}
-async function connectWallet(){const eth=requireWallet();await ensureGalileo();const accounts=await eth.request({method:'eth_requestAccounts'});wallet=accounts[0];const balance=await eth.request({method:'eth_getBalance',params:[wallet,'latest']});$('walletAddress').textContent=wallet;$('walletBalance').textContent='Balance: '+format0G(balance);$('walletPill').textContent='WALLET · '+wallet.slice(0,6)+'…'+wallet.slice(-4);$('walletPill').className='pill ok';return wallet;}
+async function connectWallet(){setCue('AUTHORIZE','The human starts by choosing a wallet. No private key enters the app.');const eth=requireWallet();await ensureGalileo();const accounts=await eth.request({method:'eth_requestAccounts'});wallet=accounts[0];const balance=await eth.request({method:'eth_getBalance',params:[wallet,'latest']});$('walletAddress').textContent=wallet;$('walletBalance').textContent='Balance: '+format0G(balance);$('walletPill').textContent='WALLET / '+wallet.slice(0,6)+'…'+wallet.slice(-4);$('walletPill').className='pill ok';setCue('WALLET READY','The wallet is on 0G Galileo. Next it signs one exact bounded workflow.');return wallet;}
 function utf8Hex(text){return '0x'+Array.from(new TextEncoder().encode(text),b=>b.toString(16).padStart(2,'0')).join('');}
-async function signAuthorization(){const eth=requireWallet(),address=wallet||await connectWallet();await ensureGalileo();const r=await fetch('/api/wallet/challenge?address='+encodeURIComponent(address));const challenge=await r.json();if(!r.ok)throw new Error(challenge.error||'challenge failed');const signature=await eth.request({method:'personal_sign',params:[utf8Hex(challenge.message),address]});const vr=await fetch('/api/wallet/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address,message:challenge.message,signature})});const receipt=await vr.json();lastChallenge=challenge;lastWalletReceipt=receipt;if(!receipt.ok)throw new Error('wallet authorization rejected');lastAuth={address,message:challenge.message,signature};$('walletState').textContent=pretty(receipt);return lastAuth;}
-async function anchorWallet(){try{if(!lastAuth)await signAuthorization();const eth=requireWallet(),address=wallet||await connectWallet();await ensureGalileo();const tx=await eth.request({method:'eth_sendTransaction',params:[{from:address,to:address,value:'0x0',data:'0x'+lastChallenge.candidateHash}]});$('walletState').textContent=pretty({authorization:lastWalletReceipt,onChainAnchor:{chainId:16602,txHash:tx,candidateHash:lastChallenge.candidateHash,meaning:'optional 0-value self transaction; connected wallet paid Galileo testnet gas'}});}catch(e){$('walletState').textContent=String(e.message||e);}}
-async function runLiveCompute(){try{$('computeState').textContent='WAITING FOR WALLET SIGNATURE…';const auth=await signAuthorization();$('computeState').textContent='CALLING 0G COMPUTE…';const r=await fetch('/api/live/compute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(auth)});const x=await r.json();$('computeState').textContent=pretty(x);if(!r.ok)throw new Error(x.error||`HTTP ${r.status}`);}catch(e){$('computeState').textContent+='\n\n'+String(e.message||e);}}
-function stage(name,value,meta,cls=''){return `<div class="stage ${cls}"><div class="name">${name}</div><div class="value">${value}</div><div class="meta">${meta}</div></div>`;}
-function shortHash(h){return h?`${h.slice(0,10)}…${h.slice(-6)}`:'—';}
-async function runMultiAgent(tamper){const final=$('multiFinal'),state=$('multiState');try{final.textContent='WAITING FOR WALLET…';final.className='final wait';state.textContent='Requesting fresh Galileo authorization…';const auth=await signAuthorization();final.textContent='TWO AGENTS RUNNING…';state.textContent='ProcurementAgent → RiskAgent on live 0G Compute…';const r=await fetch('/api/live/multi-agent',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...auth,tamper})});const x=await r.json();state.textContent=pretty(x);if(!r.ok)throw new Error(x.error||`HTTP ${r.status}`);const a=x.agentA,b=x.agentB,h=x.handoff,p=x.policy,e=x.execution;const handoffClass=h.bound?'handoff-pass':'handoff-fail';$('multiTrace').innerHTML=stage('AGENT A · PROCUREMENT',`$${Number(a.candidate.amount).toLocaleString()}`,`0G Compute · ${a.model}<br>${shortHash(a.candidateHash)}<br>${a.latencyMs} ms`)+'<div class="arrow">→</div>'+stage('HANDOFF',h.bound?'BOUND ✓':'BROKEN ✕',`from ${shortHash(h.fromHash)}<br>to ${shortHash(h.toHash)}`,handoffClass)+'<div class="arrow">→</div>'+stage('AGENT B · RISK',b.review.verdict,`risk ${b.review.risk}<br>${shortHash(b.review.candidateHash)}<br>${b.latencyMs} ms`);const row=(k,val,ok)=>`<div class="row"><span>${k}</span><b class="${ok?'yes':'no'}">${val}</b></div>`;$('multiRows').innerHTML=row('Wallet authorization','PASS',x.walletAuthorization?.checks?.signature===true)+row('Agent A live 0G Compute','PASS',a.live===true)+row('Agent B live 0G Compute','PASS',b.live===true)+row('Handoff candidate binding',h.bound?'PASS':'FAIL',h.bound)+row('Deterministic policy',p.allowed?'PASS':'DENY',p.allowed)+row('Side-effect calls',String(x.sideEffectCalls),x.sideEffectCalls===1);const ok=e.status==='executed';final.textContent=ok?'EXECUTED ✓':'ACTION BLOCKED';final.className='final'+(ok?'':' block');}catch(e){final.textContent='LIVE FLOW NOT COMPLETED';final.className='final block';state.textContent+='\n\n'+String(e.message||e);}}
-$('run').onclick=()=>run(false);$('tamper').onclick=()=>run(true);$('connectWallet').onclick=()=>connectWallet().catch(e=>$('walletState').textContent=String(e.message||e));$('signWallet').onclick=()=>signAuthorization().catch(e=>$('walletState').textContent=String(e.message||e));$('anchorWallet').onclick=anchorWallet;$('liveCompute').onclick=runLiveCompute;$('multiRun').onclick=()=>runMultiAgent(false);$('multiTamper').onclick=()=>runMultiAgent(true);$('liveAgent').onclick=async()=>{const r=await fetch('/api/live/agent'),x=await r.json();$('agentState').textContent=pretty(x);};loadConfig();
-</script></main></body></html>
+async function signAuthorization(){const eth=requireWallet(),address=wallet||await connectWallet();await ensureGalileo();setCue('SIGN','Authorize the exact bytes. Galileo will recover the signer before any sponsored Compute call.');const r=await fetch('/api/wallet/challenge?address='+encodeURIComponent(address));const challenge=await r.json();if(!r.ok)throw new Error(challenge.error||'challenge failed');const signature=await eth.request({method:'personal_sign',params:[utf8Hex(challenge.message),address]});const vr=await fetch('/api/wallet/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address,message:challenge.message,signature})});const receipt=await vr.json();lastChallenge=challenge;lastWalletReceipt=receipt;if(!receipt.ok)throw new Error('wallet authorization rejected');lastAuth={address,message:challenge.message,signature};$('walletState').textContent=pretty(receipt);setCue('GALILEO PASS','EIP-191 signer, chain, origin, freshness and candidate binding all passed on Galileo.');return lastAuth;}
+async function anchorWallet(){try{if(!lastAuth)await signAuthorization();const eth=requireWallet(),address=wallet||await connectWallet();await ensureGalileo();setCue('OPTIONAL ANCHOR','This is a 0-value Galileo self transaction. It is evidence, not Compute payment.');const tx=await eth.request({method:'eth_sendTransaction',params:[{from:address,to:address,value:'0x0',data:'0x'+lastChallenge.candidateHash}]});$('walletState').textContent=pretty({authorization:lastWalletReceipt,onChainAnchor:{chainId:16602,txHash:tx,candidateHash:lastChallenge.candidateHash,meaning:'optional 0-value self transaction; connected wallet paid Galileo testnet gas'}});}catch(e){$('walletState').textContent=String(e.message||e);}}
+async function runLiveCompute(){try{setCue('SINGLE ROLE','Inspect one raw 0G Compute call without the multi-agent story.');$('computeState').textContent='WAITING FOR WALLET SIGNATURE';const auth=await signAuthorization();$('computeState').textContent='CALLING 0G COMPUTE';const r=await fetch('/api/live/compute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(auth)});const x=await r.json();$('computeState').textContent=pretty(x);if(!r.ok)throw new Error(x.error||`HTTP ${r.status}`);setCue('COMPUTE PASS','This candidate came from a real 0G Compute inference. Execution is still locked.');}catch(e){$('computeState').textContent+='\n\n'+String(e.message||e);setCue('COMPUTE STOP','The live provider path did not complete. The gate fails closed.');}}
+async function runMultiAgent(tamper){const final=$('multiFinal'),state=$('multiState'),trace=$('multiTrace');try{resetTrace();setMeter(0);$('posterMessage').innerHTML=tamper?'Attack the boundary, not the model. <span>Corrupt the handoff.</span>':'Even two valid agents cannot authorize a <span>corrupted handoff.</span>';final.textContent='WAITING FOR WALLET';final.className='final wait';setCue('AUTHORIZE','One wallet signs one exact sponsored workflow. No signature means no provider call.');state.textContent='Requesting fresh Galileo authorization...';const auth=await signAuthorization();trace.classList.add('flowing');setCue('AGENTS RUNNING',tamper?'Agent A proposes. We deliberately mutate its candidate before Agent B sees it.':'Agent A proposes. Agent B reviews the exact candidate hash. Neither can execute.');final.textContent='TWO AGENTS RUNNING';state.textContent='ProcurementAgent -> RiskAgent on live 0G Compute...';const r=await fetch('/api/live/multi-agent',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...auth,tamper})});const x=await r.json();state.textContent=pretty(x);trace.classList.remove('flowing');if(!r.ok)throw new Error(x.error||`HTTP ${r.status}`);const a=x.agentA,b=x.agentB,h=x.handoff,p=x.policy,e=x.execution;const handoffClass=h.bound?'done handoff-pass':'fail handoff-fail';trace.innerHTML=stage('WALLET','PASS',`Galileo 16602<br>${x.walletAuthorization?.address?x.walletAuthorization.address.slice(0,8)+'…':''}`,'done')+'<div class="arrow">→</div>'+stage('AGENT A / PROCUREMENT',`$${Number(a.candidate.amount).toLocaleString()}`,`0G Compute / ${a.model}<br>${shortHash(a.candidateHash)}<br>${a.latencyMs} ms`,'done')+'<div class="arrow">→</div>'+stage('HANDOFF HASH',h.bound?'BOUND':'BROKEN',`from ${shortHash(h.fromHash)}<br>to ${shortHash(h.toHash)}`,handoffClass)+'<div class="arrow">→</div>'+stage('AGENT B / RISK',b.review.verdict,`risk ${b.review.risk}<br>${shortHash(b.review.candidateHash)}<br>${b.latencyMs} ms`,'done')+'<div class="arrow">→</div>'+stage('RECEIPTGATE',p.allowed?'ALLOW':'DENY',`deterministic policy<br>side-effect calls ${x.sideEffectCalls}`,p.allowed?'done':'fail');$('multiRows').innerHTML=row('Wallet authorization','PASS',x.walletAuthorization?.checks?.signature===true)+row('Agent A live 0G Compute','PASS',a.live===true)+row('Agent B live 0G Compute','PASS',b.live===true)+row('Handoff candidate binding',h.bound?'PASS':'FAIL',h.bound)+row('Deterministic policy',p.allowed?'ALLOW':'DENY',p.allowed)+row('Side-effect calls',String(x.sideEffectCalls),x.sideEffectCalls===1);const ok=e.status==='executed';setMeter(x.sideEffectCalls,!ok);final.textContent=ok?'EXECUTED':'ACTION BLOCKED';final.className='final'+(ok?'':' block');final.classList.add('changed');if(ok){$('posterMessage').innerHTML='ReceiptGate alone unlocks the side effect. <span>Both agents remain advisors.</span>';setCue('EXECUTED','All evidence passed, the handoff stayed exact, policy allowed the action, and side-effect calls became one.');}else{$('posterMessage').innerHTML='The proof is real. <span>The handoff is not.</span>';setCue('BLOCKED','Both agent calls can be valid, but the handoff hash changed. ReceiptGate keeps side-effect calls at zero.');}}catch(e){trace.classList.remove('flowing');setMeter(0,true);final.textContent='LIVE FLOW NOT COMPLETED';final.className='final block';state.textContent+='\n\n'+String(e.message||e);setCue('FAIL CLOSED','The live path did not complete. ReceiptGate does not substitute fixture evidence or pretend success.');}}
+$('run').onclick=()=>run(false);$('tamper').onclick=()=>run(true);$('connectWallet').onclick=()=>connectWallet().catch(e=>{$('walletState').textContent=String(e.message||e);setCue('WALLET STOP',String(e.message||e));});$('signWallet').onclick=()=>signAuthorization().catch(e=>{$('walletState').textContent=String(e.message||e);setCue('SIGN STOP',String(e.message||e));});$('anchorWallet').onclick=anchorWallet;$('liveCompute').onclick=runLiveCompute;$('multiRun').onclick=()=>runMultiAgent(false);$('multiTamper').onclick=()=>runMultiAgent(true);$('liveAgent').onclick=async()=>{setCue('IDENTITY PROOF','Verify the running Agentic ID signer, freshness and on-chain data roots.');const r=await fetch('/api/live/agent'),x=await r.json();$('agentState').textContent=pretty(x);setCue(x.live?'IDENTITY PASS':'IDENTITY STOP',x.live?'Agentic ID /hello verified. This proves identity, not yet the candidate-bound multi-agent response.':'Agentic ID is not live or not configured. No stronger claim is made.');};loadConfig();
+</script>
+</body>
+</html>
