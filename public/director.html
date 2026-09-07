@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>ReceiptGate — Deterministic Demo Director</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
+#demoFrame{display:block;width:100%;height:100%;border:0;background:#000}
+#directorStatus{position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</head>
+<body>
+<iframe id="demoFrame" title="ReceiptGate guided demo" src="/?director=1" allow="clipboard-write"></iframe>
+<div id="directorStatus" role="status" aria-live="polite">Director booting.</div>
+<script id="receiptgate-demo-contract" type="application/json">
+{
+  "schema":"receiptgate-demo-director-v1",
+  "purpose":"Deterministic presentation/navigation contract for humans and browser agents. The director never changes ReceiptGate authorization semantics.",
+  "invariant":"execute(sideEffect) is unreachable unless verify(proof,candidate)==PASS AND policy(candidate)==ALLOW",
+  "authority":"Agent A proposes; Agent B advises; ReceiptGate authorizes.",
+  "proofBoundaries":{
+    "wallet":"0G Galileo EIP-191 authorization of the exact bounded workflow; not Agentic ID proof",
+    "multiAgent":"two live 0G Compute role calls when ZG_* is configured; no candidate-bound Agentic ID proof is claimed",
+    "agenticId":"signed /hello proves running identity; not yet the cryptographic proof of the multi-agent candidate",
+    "fixture":"deterministic planted oracle; never represented as live 0G evidence"
+  },
+  "actions":{
+    "run-live-normal":{"selector":"#multiRun","effect":"wallet-consent+sponsored-0g-compute","requiresHumanConsent":true,"successOracle":"#multiFinal == EXECUTED and #sideEffectHero == 1"},
+    "run-live-tamper":{"selector":"#multiTamper","effect":"wallet-consent+sponsored-0g-compute","requiresHumanConsent":true,"successOracle":"#multiFinal == ACTION BLOCKED and #sideEffectHero == 0"},
+    "connect-wallet":{"selector":"#connectWallet","effect":"wallet-connect","requiresHumanConsent":true,"successOracle":"#walletPill contains a wallet address"},
+    "sign-wallet":{"selector":"#signWallet","effect":"wallet-signature","requiresHumanConsent":true,"successOracle":"#walletState contains signature=true"},
+    "verify-agentic-id":{"selector":"#liveAgent","effect":"read-only-agent-proof","requiresHumanConsent":false,"successOracle":"#agentState contains verification.ok=true"},
+    "run-fixture-normal":{"selector":"#run","effect":"fixture-only","requiresHumanConsent":false,"successOracle":"#final == EXECUTED"},
+    "run-fixture-tamper":{"selector":"#tamper","effect":"fixture-only","requiresHumanConsent":false,"successOracle":"#final == ACTION BLOCKED"},
+    "anchor-wallet":{"selector":"#anchorWallet","effect":"on-chain-transaction","requiresHumanConsent":true,"optional":true}
+  },
+  "orderedLiveStory":[
+    "explain-invariant",
+    "preflight-runtime",
+    "authorize-wallet",
+    "run-live-normal",
+    "inspect-normal-receipt",
+    "run-live-tamper",
+    "inspect-tamper-receipt",
+    "verify-agentic-id-if-configured",
+    "close-on-invariant"
+  ],
+  "stateRules":[
+    {"state":"runtime-blocked","when":"computeConfigured=false","next":"configure ZG_SERVICE_URL/ZG_MODEL/ZG_API_SECRET; never fall back silently"},
+    {"state":"normal-ready","when":"computeConfigured=true and normal not proven","next":"#multiRun"},
+    {"state":"attack-ready","when":"normal EXECUTED with sideEffectCalls=1","next":"#multiTamper"},
+    {"state":"identity-ready","when":"tamper BLOCKED with sideEffectCalls=0 and agentConfigured=true","next":"#liveAgent"},
+    {"state":"complete","when":"tamper BLOCKED and required proof surfaces inspected","next":".takeaway"}
+  ]
+}
+</script>
+<script>
+(() => {
+  const frame = document.getElementById('demoFrame');
+  const status = document.getElementById('directorStatus');
+  const contract = JSON.parse(document.getElementById('receiptgate-demo-contract').textContent);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const replayDelay = reduced ? 30 : 430;
+  const focusHold = reduced ? 30 : 900;
+  let doc = null;
+  let config = null;
+  let state = 'boot';
+  let scenario = null;
+  let normalProven = false;
+  let attackProven = false;
+  let identityInspected = false;
+  let focusTimer = null;
+
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const text = selector => doc?.querySelector(selector)?.textContent?.trim() || '';
+  const action = id => contract.actions[id];
+
+  function announce(message) {
+    status.textContent = message;
+  }
+
+  function setCue(copy, step) {
+    const cue = doc?.getElementById('presenterCue');
+    const cueStep = doc?.getElementById('cueStep');
+    if (cue) {
+      cue.textContent = copy;
+      cue.classList.remove('changed');
+      void cue.offsetWidth;
+      cue.classList.add('changed');
+    }
+    if (cueStep) cueStep.textContent = step;
+    announce(`${step}: ${copy}`);
+  }
+
+  function clearFocus() {
+    if (!doc) return;
+    doc.querySelectorAll('.rg-director-focus').forEach(el => el.classList.remove('rg-director-focus'));
+  }
+
+  function resolveSelector(selector) {
+    if (!doc) return null;
+    if (selector.startsWith('trace:')) {
+      const index = Number(selector.slice(6));
+      return doc.querySelectorAll('#multiTrace .stage')[index] || null;
+    }
+    return doc.querySelector(selector);
+  }
+
+  function focus(selector, cueCopy, cueStep = state) {
+    const el = resolveSelector(selector);
+    if (!el) return false;
+    clearTimeout(focusTimer);
+    clearFocus();
+    el.classList.add('rg-director-focus');
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
+    if (el.matches('button,[href],summary')) {
+      try { el.focus({ preventScroll: true }); } catch {}
+    }
+    if (cueCopy) setCue(cueCopy, cueStep);
+    focusTimer = setTimeout(() => el.classList.remove('rg-director-focus'), focusHold);
+    return true;
+  }
+
+  function transition(next, options = {}) {
+    state = next;
+    document.documentElement.dataset.demoStage = next;
+    frame.dataset.demoStage = next;
+    if (options.selector) focus(options.selector, options.cue, options.step || next.toUpperCase());
+    else if (options.cue) setCue(options.cue, options.step || next.toUpperCase());
+    window.dispatchEvent(new CustomEvent('receiptgate:demo-stage', { detail: getState() }));
+  }
+
+  function walletConnected() {
+    const value = text('#walletPill');
+    return value.includes('0x') || (!value.includes('DISCONNECTED') && !value.includes('CHECKING'));
+  }
+
+  function parseLatestReceipt() {
+    const raw = text('#multiState');
+    if (!raw.startsWith('{')) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function currentSideEffects() {
+    const n = Number(text('#sideEffectHero'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function recommend() {
+    if (!doc || !config) return { action: 'wait-for-runtime-preflight', selector: '.statusbar', autoExecutable: false };
+    if (config.computeConfigured !== true) {
+      return {
+        action: 'configure-0g-compute',
+        selector: '#computePill',
+        autoExecutable: false,
+        blocker: 'ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET are not configured in production',
+        forbiddenFallback: 'Do not relabel fixture evidence as live Compute.'
+      };
+    }
+    if (!normalProven) return { action: 'run-live-normal', ...action('run-live-normal'), autoExecutable: false };
+    if (!attackProven) return { action: 'run-live-tamper', ...action('run-live-tamper'), autoExecutable: false };
+    if (config.agentConfigured === true && !identityInspected) return { action: 'verify-agentic-id', ...action('verify-agentic-id'), autoExecutable: true };
+    return { action: 'close-on-invariant', selector: '.takeaway', autoExecutable: true };
+  }
+
+  function getState() {
+    return {
+      schema: 'receiptgate-demo-director-state-v1',
+      state,
+      scenario,
+      runtime: config ? { computeConfigured: config.computeConfigured === true, agentConfigured: config.agentConfigured === true, chainId: config.wallet?.chainId || 16602 } : null,
+      wallet: { connected: walletConnected() },
+      proven: { normal: normalProven, tamper: attackProven, agenticIdInspected: identityInspected },
+      visibleOracle: { verdict: text('#multiFinal'), sideEffectCalls: currentSideEffects() },
+      nextAction: recommend(),
+      invariant: contract.invariant
+    };
+  }
+
+  async function replayReceipt(receipt, tamper) {
+    const bound = receipt?.handoff?.bound === true;
+    const sequence = [
+      ['trace:0', 'The wallet authorizes one exact bounded workflow. It never gives ReceiptGate custody.', '1 / WALLET'],
+      ['trace:1', 'Agent A proposes the candidate. Proposal is not authority.', '2 / PROPOSE'],
+      ['trace:2', bound ? 'The exact candidate hash survived the Agent-to-Agent boundary.' : 'The proof is real. The handoff is not. The candidate hash changed.', '3 / HANDOFF'],
+      ['trace:3', 'Agent B advises on risk. A second agent still does not own execution authority.', '4 / REVIEW'],
+      ['trace:4', 'ReceiptGate checks proof binding and deterministic policy before side effects become reachable.', '5 / GATE']
+    ];
+    for (const [selector, cue, step] of sequence) {
+      focus(selector, cue, step);
+      await sleep(replayDelay);
+    }
+    focus('#multiFinal', tamper ? 'Blocked means sideEffectCalls stayed at zero. The attack never reached execution.' : 'Executed means every gate passed and the bounded sideEffectCalls oracle became one.', tamper ? 'BLOCK / 0' : 'EXECUTE / 1');
+    await sleep(replayDelay);
+  }
+
+  async function onMultiVerdict() {
+    const verdict = text('#multiFinal');
+    if (!scenario || (!verdict.includes('EXECUTED') && !verdict.includes('ACTION BLOCKED') && !verdict.includes('LIVE FLOW NOT COMPLETED'))) return;
+    const receipt = parseLatestReceipt();
+    if (verdict.includes('LIVE FLOW NOT COMPLETED')) {
+      transition('live-error', { selector: '#multiState', cue: 'The live path did not complete. Inspect the raw receipt instead of guessing or falling back.', step: 'FAIL CLOSED' });
+      return;
+    }
+    await replayReceipt(receipt, scenario === 'tamper');
+    if (scenario === 'normal' && verdict.includes('EXECUTED') && currentSideEffects() === 1) {
+      normalProven = true;
+      transition('attack-ready', { selector: '#multiTamper', cue: 'Normal path is proven. Now corrupt the Agent A to Agent B handoff by 10×.', step: 'NEXT / ATTACK' });
+    } else if (scenario === 'tamper' && verdict.includes('ACTION BLOCKED') && currentSideEffects() === 0) {
+      attackProven = true;
+      if (config?.agentConfigured === true) {
+        transition('identity-ready', { selector: '#liveAgent', cue: 'Tamper is blocked. One optional proof surface remains: verify the running Agentic ID identity.', step: 'NEXT / IDENTITY' });
+      } else {
+        transition('complete', { selector: '.takeaway', cue: 'Close here: even two valid agents cannot authorize a corrupted handoff. Compute proposes. Proof verifies. Policy authorizes.', step: 'CLOSE' });
+      }
+    }
+  }
+
+  function installFocusStyle() {
+    const style = doc.createElement('style');
+    style.id = 'receiptgate-director-focus-style';
+    style.textContent = `
+      .rg-director-focus{position:relative;z-index:12;box-shadow:0 0 0 2px #cb8aff,0 0 0 9px rgba(146,0,225,.18),0 0 90px rgba(146,0,225,.24)!important;transition:box-shadow .24s ease,transform .24s ease!important}
+      @media(prefers-reduced-motion:reduce){.rg-director-focus{transition:none!important}}
+    `;
+    doc.head.appendChild(style);
+  }
+
+  function bindActions() {
+    const liveNormal = doc.querySelector('#multiRun');
+    const liveTamper = doc.querySelector('#multiTamper');
+    const liveAgent = doc.querySelector('#liveAgent');
+
+    liveNormal?.addEventListener('click', event => {
+      scenario = 'normal';
+      if (config?.computeConfigured !== true) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        transition('runtime-blocked', { selector: '#computePill', cue: 'Live 0G Compute is not configured. Provision ZG_* first; never substitute fixture evidence silently.', step: 'BLOCKER' });
+        return;
+      }
+      transition('authorize-wallet', { selector: '#connectWallet', cue: 'Authorize the exact workflow. Wallet consent is the only deliberately human step.', step: '1 / AUTHORIZE' });
+    }, true);
+
+    liveTamper?.addEventListener('click', event => {
+      scenario = 'tamper';
+      if (config?.computeConfigured !== true) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        transition('runtime-blocked', { selector: '#computePill', cue: 'The attack demo also requires live Compute. Configure production first.', step: 'BLOCKER' });
+        return;
+      }
+      transition('authorize-tamper', { selector: '#connectWallet', cue: 'Fresh authorization first. Then the Director will replay where the handoff becomes invalid.', step: 'ATTACK / AUTHORIZE' });
+    }, true);
+
+    doc.querySelector('#connectWallet')?.addEventListener('click', () => transition('wallet-connect', { selector: '#connectWallet', cue: 'Wallet connection is a consent boundary. Wait for the wallet, do not search elsewhere on the page.', step: 'WALLET' }), true);
+    doc.querySelector('#signWallet')?.addEventListener('click', () => transition('wallet-sign', { selector: '#signWallet', cue: 'Sign the exact bounded workflow. No private key enters the page or Vercel runtime.', step: 'SIGN' }), true);
+    doc.querySelector('#liveCompute')?.addEventListener('click', () => transition('single-compute', { selector: '#liveCompute', cue: 'This is the component-level live Compute proof surface, separate from the two-role judge path.', step: 'COMPUTE' }), true);
+    liveAgent?.addEventListener('click', () => transition('agentic-id-check', { selector: '#liveAgent', cue: 'Verify signed /hello as identity evidence. Do not claim it is candidate-bound proof.', step: 'IDENTITY' }), true);
+    doc.querySelector('#run')?.addEventListener('click', () => transition('fixture-normal', { selector: '#run', cue: 'Rehearsal fixture only. It proves the gate oracle, not live 0G Compute.', step: 'FIXTURE / NORMAL' }), true);
+    doc.querySelector('#tamper')?.addEventListener('click', () => transition('fixture-tamper', { selector: '#tamper', cue: 'Rehearsal attack: planted candidate-binding negative. Keep it labeled fixture.', step: 'FIXTURE / ATTACK' }), true);
+
+    const observer = new MutationObserver(() => onMultiVerdict());
+    const final = doc.querySelector('#multiFinal');
+    if (final) observer.observe(final, { childList: true, characterData: true, subtree: true, attributes: true });
+
+    const walletObserver = new MutationObserver(() => {
+      if (walletConnected() && (state === 'wallet-connect' || state === 'authorize-wallet' || state === 'authorize-tamper')) {
+        transition('wallet-connected', { selector: '#walletPill', cue: 'Wallet is connected. The live path will now request the exact EIP-191 authorization.', step: 'WALLET / READY' });
+      }
+    });
+    const walletPill = doc.querySelector('#walletPill');
+    if (walletPill) walletObserver.observe(walletPill, { childList: true, characterData: true, subtree: true, attributes: true });
+
+    const agentObserver = new MutationObserver(() => {
+      const raw = text('#agentState');
+      if (raw.includes('"ok": true') || raw.includes('"ok":true')) {
+        identityInspected = true;
+        transition('complete', { selector: '.takeaway', cue: 'Identity proof inspected. Close on the execution invariant, not on the number of integrations.', step: 'CLOSE' });
+      }
+    });
+    const agentState = doc.querySelector('#agentState');
+    if (agentState) agentObserver.observe(agentState, { childList: true, characterData: true, subtree: true });
+  }
+
+  async function preflight() {
+    config = await fetch('/api/config', { cache: 'no-store' }).then(r => r.json());
+    if (config.computeConfigured === true) {
+      transition('normal-ready', { selector: '#multiRun', cue: 'Runtime is ready. Start the judge path: authorize once, then let two agents collaborate under one deterministic gate.', step: 'READY / LIVE' });
+    } else {
+      transition('runtime-blocked', { selector: '#computePill', cue: 'The presentation is ready, but live Compute credentials are not. Configure ZG_*; do not fake the live path.', step: 'BLOCKER / CONFIG' });
+    }
+  }
+
+  async function onLoad() {
+    doc = frame.contentDocument;
+    if (!doc) return;
+    installFocusStyle();
+    bindActions();
+    transition('explain-invariant', { selector: '.hero', cue: 'Start with the invariant: autonomous agents may propose, but no side effect is reachable without proof PASS and policy ALLOW.', step: '0 / INVARIANT' });
+    await sleep(reduced ? 20 : 550);
+    await preflight();
+  }
+
+  frame.addEventListener('load', onLoad, { once: true });
+
+  window.ReceiptGateDemoDirector = Object.freeze({
+    schema: contract.schema,
+    contract: () => structuredClone(contract),
+    getState,
+    recommend,
+    focus: selector => focus(selector),
+    next: () => {
+      const next = recommend();
+      if (next.selector) focus(next.selector, next.blocker || `Next deterministic action: ${next.action}`, 'NEXT');
+      return next;
+    },
+    run: actionId => {
+      const spec = action(actionId);
+      if (!spec) throw new Error(`unknown director action: ${actionId}`);
+      const el = resolveSelector(spec.selector);
+      if (!el) throw new Error(`missing selector for ${actionId}: ${spec.selector}`);
+      if (spec.requiresHumanConsent) {
+        focus(spec.selector, `Human consent required for ${actionId}. The Director will not synthesize wallet approval.`, 'CONSENT REQUIRED');
+        return { executed: false, requiresHumanConsent: true, selector: spec.selector };
+      }
+      el.click();
+      return { executed: true, requiresHumanConsent: false, selector: spec.selector };
+    },
+    runFixtureNormal: () => doc?.querySelector('#run')?.click(),
+    runFixtureTamper: () => doc?.querySelector('#tamper')?.click(),
+    inspectReceipt: () => parseLatestReceipt()
+  });
+})();
+</script>
+</body>
+</html>
