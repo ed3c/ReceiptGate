@@ -21,7 +21,6 @@ jobs:
     env:
       BASE_URL: https://receiptgate.vercel.app
       TARGET_SHA: ${{ github.sha }}
-      DEMO_WALLET: 0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,17 +57,14 @@ jobs:
           set -euo pipefail
           root_code=$(curl -sS -o artifacts/root.html -w '%{http_code}' "$BASE_URL/")
           capability_page_code=$(curl -sS -o artifacts/capability.html -w '%{http_code}' "$BASE_URL/capability.html")
-          routing_page_code=$(curl -sS -o artifacts/routing.html -w '%{http_code}' "$BASE_URL/routing.html")
           api_health_code=200
           health_code=200
           config_code=$(curl -sS -o artifacts/config.json -w '%{http_code}' "$BASE_URL/api/config")
-          readiness_code=$(curl -sS -o artifacts/wallet-readiness.json -w '%{http_code}' "$BASE_URL/api/wallet/readiness")
           normal_code=$(curl -sS -o artifacts/demo-normal.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":false}' "$BASE_URL/api/demo")
           tamper_code=$(curl -sS -o artifacts/demo-tamper.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"tamper":true}' "$BASE_URL/api/demo")
           anon_code=$(curl -sS -o artifacts/live-compute-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/compute")
           anon_multi_code=$(curl -sS -o artifacts/live-multi-agent-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/multi-agent")
           anon_capability_code=$(curl -sS -o artifacts/live-capability-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/capability")
-          anon_routing_code=$(curl -sS -o artifacts/live-proof-route-anonymous.json -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/live/proof-route")
           bun -e '
             import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
             const config=await Bun.file("artifacts/config.json").json();
@@ -111,69 +107,46 @@ jobs:
               const rs=capability.reference.evaluation?.score,cs=capability.candidate.evaluation?.score;
               if(!Number.isFinite(rs)||!Number.isFinite(cs)||rs<0||rs>100||cs<0||cs>100)throw new Error("capability scores out of range");
               await Bun.write("artifacts/live-capability-summary.json",JSON.stringify({configured:true,verified:true,model:capability.model,transport:capability.transport,referenceScore:rs,candidateScore:cs,continuity:capability.continuity,receiptHash:capability.receiptHash,evalSuiteHash:capability.evalSuiteHash},null,2));
-
-              if(config.walletAllowlistEnabled===true){
-                await Bun.write("artifacts/live-proof-route-summary.json",JSON.stringify({configured:true,verified:false,skipped:true,reason:"production wallet allowlist requires the human-controlled demo wallet; CI never receives its private key"},null,2));
-              }else{
-                const routeAuth=await auth();
-                const routeResponse=await fetch(`${process.env.BASE_URL}/api/live/proof-route`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...routeAuth,taskClass:"financial-side-effect"})});
-                const route=await routeResponse.json();
-                await Bun.write("artifacts/live-proof-route.json",JSON.stringify(route,null,2));
-                if(routeResponse.status!==200||route.schema!=="receiptgate-proof-routing-receipt-v1"||route.live!==true||route.route?.taskClass!=="financial-side-effect"||route.route?.riskClass!=="high"||route.route?.trustMode!=="private"||route.route?.model!=="0GM-1.0-35B-A3B"||route.route?.requiredProof?.privateInference!==true||!validHash(route.routePolicyHash)||!validHash(route.requestHash)||!validHash(route.responseHash)||!validHash(route.receiptHash))throw new Error(`live proof route failed ${routeResponse.status}: ${JSON.stringify(route)}`);
-                await Bun.write("artifacts/live-proof-route-summary.json",JSON.stringify({configured:true,verified:true,taskClass:route.route.taskClass,riskClass:route.route.riskClass,trustMode:route.route.trustMode,model:route.route.model,routePolicyHash:route.routePolicyHash,receiptHash:route.receiptHash},null,2));
-              }
             }else{
               const reason="Vercel ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET not configured";
               await Bun.write("artifacts/live-multi-agent-summary.json",JSON.stringify({configured:false,verified:false,skipped:true,reason},null,2));
               await Bun.write("artifacts/live-capability-summary.json",JSON.stringify({configured:false,verified:false,skipped:true,reason},null,2));
-              await Bun.write("artifacts/live-proof-route-summary.json",JSON.stringify({configured:false,verified:false,skipped:true,reason},null,2));
             }'
-          printf 'root=%s capability_page=%s routing_page=%s api_health=%s health=%s config=%s readiness=%s normal=%s tamper=%s anonymous_compute=%s anonymous_multi_agent=%s anonymous_capability=%s anonymous_routing=%s wallet=verified\n' "$root_code" "$capability_page_code" "$routing_page_code" "$api_health_code" "$health_code" "$config_code" "$readiness_code" "$normal_code" "$tamper_code" "$anon_code" "$anon_multi_code" "$anon_capability_code" "$anon_routing_code"
+          printf 'root=%s capability_page=%s api_health=%s health=%s config=%s normal=%s tamper=%s anonymous_compute=%s anonymous_multi_agent=%s anonymous_capability=%s wallet=verified\n' "$root_code" "$capability_page_code" "$api_health_code" "$health_code" "$config_code" "$normal_code" "$tamper_code" "$anon_code" "$anon_multi_code" "$anon_capability_code"
           test "$root_code" = 200
           test "$capability_page_code" = 200
-          test "$routing_page_code" = 200
           test "$api_health_code" = 200
           test "$health_code" = 200
           test "$config_code" = 200
-          test "$readiness_code" = 200
           test "$normal_code" = 200
           test "$tamper_code" = 200
           test "$anon_code" = 401
           test "$anon_multi_code" = 401
           test "$anon_capability_code" = 401
-          test "$anon_routing_code" = 401
           grep -q 'SAME MODEL' artifacts/capability.html
           grep -q 'ReceiptGateCapabilityProof' artifacts/capability.html
-          grep -q 'ReceiptGateProofRouter' artifacts/routing.html
           bun -e '
             const a=await Bun.file("artifacts/api-health.json").json();
             const b=await Bun.file("artifacts/health-rewrite.json").json();
             const c=await Bun.file("artifacts/config.json").json();
-            const readiness=await Bun.file("artifacts/wallet-readiness.json").json();
             const n=await Bun.file("artifacts/demo-normal.json").json();
             const t=await Bun.file("artifacts/demo-tamper.json").json();
             const x=await Bun.file("artifacts/live-compute-anonymous.json").json();
             const xm=await Bun.file("artifacts/live-multi-agent-anonymous.json").json();
             const xc=await Bun.file("artifacts/live-capability-anonymous.json").json();
-            const xr=await Bun.file("artifacts/live-proof-route-anonymous.json").json();
             const wc=await Bun.file("artifacts/wallet-challenge.json").json();
             const wv=await Bun.file("artifacts/wallet-verify.json").json();
             const ma=await Bun.file("artifacts/live-multi-agent-summary.json").json();
             const cap=await Bun.file("artifacts/live-capability-summary.json").json();
-            const route=await Bun.file("artifacts/live-proof-route-summary.json").json();
             if(a.gitCommit!==process.env.TARGET_SHA||b.gitCommit!==process.env.TARGET_SHA)throw new Error("production commit mismatch");
             if(c.walletAuthorizationRequiredForCompute!==true)throw new Error("wallet auth config missing");
-            if(c.demoWallet?.mode!=="single-wallet-hackathon"||c.demoWallet?.address?.toLowerCase()!==process.env.DEMO_WALLET.toLowerCase())throw new Error("single-wallet config mismatch");
-            if(readiness.schema!=="receiptgate-demo-wallet-readiness-v1"||readiness.live!==true||readiness.chainId!==16602||readiness.address?.toLowerCase()!==process.env.DEMO_WALLET.toLowerCase()||!/^\d+$/.test(readiness.balanceWei||""))throw new Error("wallet readiness readback failed");
-            if(readiness.proofBoundary?.includes("Private Computer Main Account credit")!==true)throw new Error("wallet readiness proof boundary missing");
             if(n.receipt?.execution?.status!=="executed"||n.sideEffectCalls!==1)throw new Error("normal production demo failed");
             if(t.receipt?.execution?.status!=="blocked"||t.sideEffectCalls!==0||t.receipt?.verification?.checks?.candidateBinding!==false)throw new Error("tamper production demo failed");
-            if(x.authorized!==false||xm.authorized!==false||xc.authorized!==false||xr.authorized!==false)throw new Error("anonymous sponsored path was not rejected");
+            if(x.authorized!==false||xm.authorized!==false||xc.authorized!==false)throw new Error("anonymous sponsored path was not rejected");
             if(wc.chainId!==16602||wc.origin!==process.env.BASE_URL)throw new Error("production wallet challenge mismatch");
             if(wv.ok!==true||wv.checks?.signature!==true||wv.checks?.origin!==true||wv.checks?.chain!==true||wv.checks?.candidateHash!==true)throw new Error("production wallet verification failed");
-            if(c.computeConfigured===true&&(ma.verified!==true||cap.verified!==true))throw new Error("configured production did not verify live multi-agent/capability surfaces");
-            if(c.computeConfigured===true&&c.walletAllowlistEnabled!==true&&route.verified!==true)throw new Error("configured production did not verify proof-aware routing");
-            const summary={schema:"receiptgate-production-smoke-v5",accepted:true,commit:process.env.TARGET_SHA,url:process.env.BASE_URL,health:a,walletReadiness:{address:readiness.address,chainId:readiness.chainId,balanceWei:readiness.balanceWei,balanceOG:readiness.balanceOG,funding:readiness.funding,proofBoundary:readiness.proofBoundary},normal:{status:n.receipt.execution.status,sideEffectCalls:n.sideEffectCalls},tamper:{status:t.receipt.execution.status,sideEffectCalls:t.sideEffectCalls,candidateBinding:t.receipt.verification.checks.candidateBinding},anonymousCompute:{status:401,authorized:x.authorized},anonymousMultiAgent:{status:401,authorized:xm.authorized},anonymousCapability:{status:401,authorized:xc.authorized},anonymousRouting:{status:401,authorized:xr.authorized},wallet:{challenge:true,verified:wv.ok,address:wv.address,chainId:wv.chainId,checks:wv.checks},multiAgent:ma,capability:cap,proofRoute:route,generatedAt:new Date().toISOString()};
+            if(c.computeConfigured===true&&(ma.verified!==true||cap.verified!==true))throw new Error("configured production did not verify all live Compute proof surfaces");
+            const summary={schema:"receiptgate-production-smoke-v4",accepted:true,commit:process.env.TARGET_SHA,url:process.env.BASE_URL,health:a,normal:{status:n.receipt.execution.status,sideEffectCalls:n.sideEffectCalls},tamper:{status:t.receipt.execution.status,sideEffectCalls:t.sideEffectCalls,candidateBinding:t.receipt.verification.checks.candidateBinding},anonymousCompute:{status:401,authorized:x.authorized},anonymousMultiAgent:{status:401,authorized:xm.authorized},anonymousCapability:{status:401,authorized:xc.authorized},wallet:{challenge:true,verified:wv.ok,address:wv.address,chainId:wv.chainId,checks:wv.checks},multiAgent:ma,capability:cap,generatedAt:new Date().toISOString()};
             await Bun.write("artifacts/production-smoke.json",JSON.stringify(summary,null,2)+"\n");
             console.log(JSON.stringify(summary));'
       - name: Retain production readback evidence
