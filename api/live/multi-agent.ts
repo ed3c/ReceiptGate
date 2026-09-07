@@ -21,6 +21,34 @@ type RiskReview = {
   reason: string;
 };
 
+type ServeProofGate = {
+  configured: boolean;
+  required: boolean;
+  verified: boolean;
+  reason?: string;
+  servicePath?: string;
+  responseStatus?: number;
+  responseCandidateHash?: string | null;
+  responseBinding?: boolean;
+  proof?: {
+    agentId: string | null;
+    submitter: string | null;
+    timestamp: string | null;
+    deadline: string | null;
+    taskHash: string | null;
+    dataHashes: string[];
+    frameworkHash: string | null;
+    signaturePresent: boolean;
+  } | null;
+  verification?: {
+    ok: boolean;
+    signerMatches?: boolean;
+    notExpired?: boolean;
+    dataOnChain?: boolean;
+    reasons?: string[];
+  } | null;
+};
+
 function json(value: unknown, status = 200): Response {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
@@ -29,6 +57,7 @@ function safeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message
     .replace(/app-sk-[A-Za-z0-9._-]+/g, "[redacted-api-secret]")
+    .replace(/\bsk-[A-Za-z0-9._-]+/g, "[redacted-api-secret]")
     .replace(/0x[a-fA-F0-9]{64}/g, "[redacted-private-material]")
     .slice(0, 500);
 }
@@ -47,9 +76,21 @@ function walletAllowed(address: string): boolean {
     .includes(address.toLowerCase());
 }
 
-function chatCompletionsUrl(serviceUrl: string): string {
+export function classifyComputeTransport(serviceUrl: string): "0g-router" | "0g-compute-provider" {
+  try {
+    const url = new URL(serviceUrl);
+    if (url.hostname === "router-api.0g.ai") return "0g-router";
+  } catch {
+    // The live fetch below will fail closed for malformed URLs.
+  }
+  return "0g-compute-provider";
+}
+
+export function chatCompletionsUrl(serviceUrl: string): string {
   const base = serviceUrl.replace(/\/+$/, "");
-  return base.endsWith("/v1/proxy") ? `${base}/chat/completions` : `${base}/v1/proxy/chat/completions`;
+  if (base.endsWith("/chat/completions")) return base;
+  if (base.endsWith("/v1/proxy") || base.endsWith("/v1")) return `${base}/chat/completions`;
+  return `${base}/v1/proxy/chat/completions`;
 }
 
 function exactObject(value: unknown, keys: string[], name: string): Record<string, unknown> {
@@ -175,6 +216,23 @@ export function evaluateHandoff(input: {
   };
 }
 
+export function applyServeProofGate<T extends ReturnType<typeof evaluateHandoff>>(decision: T, serveProof: Pick<ServeProofGate, "required" | "verified" | "reason">): T {
+  const rules = { ...decision.policy.rules, serveProofRequired: serveProof.required } as T["policy"]["rules"];
+  if (!serveProof.required || serveProof.verified) {
+    return {
+      ...decision,
+      policy: { ...decision.policy, rules },
+    } as T;
+  }
+
+  const reasons = [...decision.policy.reasons, serveProof.reason || "candidate-bound Agentic ID ServeProof verification failed"];
+  return {
+    ...decision,
+    policy: { ...decision.policy, allowed: false, reasons, rules },
+    execution: { ...decision.execution, status: "blocked", sideEffectCalls: 0 },
+  } as T;
+}
+
 async function verifyWallet(request: Request, body: { address: string; message: string; signature: string }) {
   const response = await fetch(new URL("/api/wallet/verify", request.url), {
     method: "POST",
@@ -219,6 +277,114 @@ async function computeCall(input: {
   return { content: payload.choices?.[0]?.message?.content, latencyMs: Date.now() - started };
 }
 
+function proofField(value: unknown): string | null {
+  if (value == null) return null;
+  try { return String(value); } catch { return null; }
+}
+
+async function verifyCandidateServeProof(candidate: Candidate, candidateHashValue: string): Promise<ServeProofGate> {
+  const agentUrl = process.env.RECEIPTGATE_AGENT_URL?.trim();
+  const servicePath = process.env.RECEIPTGATE_AGENT_SERVICE_PATH?.trim();
+  if (!agentUrl || !servicePath) {
+    return {
+      configured: false,
+      required: false,
+      verified: false,
+      reason: "candidate-bound Agentic ID service is not configured",
+    };
+  }
+  if (!servicePath.startsWith("/api/")) {
+    return {
+      configured: true,
+      required: true,
+      verified: false,
+      servicePath,
+      reason: "RECEIPTGATE_AGENT_SERVICE_PATH must be a signed /api/* service",
+    };
+  }
+
+  try {
+    const attestorUrl = process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai";
+    const { AgenticID } = await import("@0gfoundation/0g-agenticid-sdk");
+    const ag = await AgenticID.fromAttestor(attestorUrl);
+    const agent = await ag.agent.connect(agentUrl);
+    const { response, proof } = await agent.fetchWithProof(servicePath, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "receiptgate-candidate-binding",
+        candidateHash: candidateHashValue,
+        candidate,
+      }),
+    });
+
+    const text = await response.text();
+    let payload: any = null;
+    try { payload = JSON.parse(text); } catch { payload = null; }
+    const echoedHash = typeof payload?.candidateHash === "string" ? payload.candidateHash.toLowerCase() : null;
+    const responseBinding = echoedHash === candidateHashValue.toLowerCase();
+
+    if (!proof) {
+      return {
+        configured: true,
+        required: true,
+        verified: false,
+        servicePath,
+        responseStatus: response.status,
+        responseCandidateHash: echoedHash,
+        responseBinding,
+        proof: null,
+        verification: null,
+        reason: "Agentic ID service response carried no X-Agent-Proof",
+      };
+    }
+
+    const verification = await ag.reputation.verifyProof(proof);
+    const verified = response.ok && responseBinding && verification.ok === true;
+    return {
+      configured: true,
+      required: true,
+      verified,
+      servicePath,
+      responseStatus: response.status,
+      responseCandidateHash: echoedHash,
+      responseBinding,
+      proof: {
+        agentId: proofField((proof as any).agentId),
+        submitter: proofField((proof as any).submitter),
+        timestamp: proofField((proof as any).timestamp),
+        deadline: proofField((proof as any).deadline),
+        taskHash: proofField((proof as any).taskHash),
+        dataHashes: Array.isArray((proof as any).dataHashes) ? (proof as any).dataHashes.map(String) : [],
+        frameworkHash: proofField((proof as any).frameworkHash),
+        signaturePresent: Boolean((proof as any).signature),
+      },
+      verification: {
+        ok: verification.ok === true,
+        signerMatches: verification.signerMatches,
+        notExpired: verification.notExpired,
+        dataOnChain: verification.dataOnChain,
+        reasons: verification.reasons,
+      },
+      reason: verified
+        ? undefined
+        : !response.ok
+          ? `Agentic ID service returned HTTP ${response.status}`
+          : !responseBinding
+            ? "signed service response is not bound to the execution candidateHash"
+            : `ServeProof verification failed: ${verification.reasons?.join("; ") || "unknown reason"}`,
+    };
+  } catch (error) {
+    return {
+      configured: true,
+      required: true,
+      verified: false,
+      servicePath,
+      reason: safeError(error),
+    };
+  }
+}
+
 export default {
   async fetch(request: Request) {
     try {
@@ -254,9 +420,10 @@ export default {
           live: false,
           authorized: true,
           error: "ZG_SERVICE_URL / ZG_MODEL / ZG_API_SECRET not configured",
-          proofBoundary: "no-live-compute-without-provider-runtime-config",
+          proofBoundary: "no-live-compute-without-runtime-config",
         }, 503);
       }
+      const transport = classifyComputeTransport(serviceUrl);
 
       const procurementRaw = await computeCall({
         serviceUrl,
@@ -296,20 +463,27 @@ export default {
         user: { candidate: transmittedCandidate, candidateHash: transmittedHash, policy: { maxAmountUsd: 300, currency: "USD" } },
       });
       const review = parseRiskReview(riskRaw.content);
-      const decision = evaluateHandoff({
+      const baseDecision = evaluateHandoff({
         originalHash,
         transmittedHash,
         review,
         candidate: transmittedCandidate,
       });
 
+      // If a signed Agentic ID /api/* service is configured, its ServeProof is
+      // part of the execution precondition. Verification happens before the
+      // bounded side-effect oracle is made reachable.
+      const serveProof = await verifyCandidateServeProof(transmittedCandidate, transmittedHash);
+      const decision = applyServeProofGate(baseDecision, serveProof);
+
       return json({
-        schema: "receiptgate-live-multi-agent-v1",
+        schema: "receiptgate-live-multi-agent-v2",
         configured: true,
         live: true,
         authorized: true,
         tampered: body.tamper === true,
-        provider: "0g-compute",
+        provider: transport,
+        transport,
         model,
         walletAuthorization: {
           address: wallet.address,
@@ -320,7 +494,7 @@ export default {
         agentA: {
           role: "ProcurementAgent",
           live: true,
-          provider: "0g-compute",
+          provider: transport,
           model,
           latencyMs: procurementRaw.latencyMs,
           candidate: originalCandidate,
@@ -333,14 +507,17 @@ export default {
         agentB: {
           role: "RiskAgent",
           live: true,
-          provider: "0g-compute",
+          provider: transport,
           model,
           latencyMs: riskRaw.latencyMs,
           review,
         },
+        serveProof,
         ...decision,
         sideEffectCalls: decision.execution.sideEffectCalls,
-        proofBoundary: "two-live-0g-compute-role-calls-with-handoff-binding; Agentic-ID candidate proof remains a separate upgrade",
+        proofBoundary: serveProof.required
+          ? "two-live-0g-inference-calls+handoff-binding+candidate-bound-agentic-id-service-proof"
+          : "two-live-0g-inference-calls+handoff-binding; candidate-bound Agentic ID service proof not configured",
       });
     } catch (error) {
       return json({ configured: true, live: false, authorized: false, error: safeError(error) }, 503);
