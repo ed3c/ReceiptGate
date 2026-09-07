@@ -1,3 +1,6 @@
+import { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+export { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+
 function json(value: unknown, status = 200): Response {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
 }
@@ -25,15 +28,6 @@ function walletAllowed(address: string): boolean {
     .includes(address.toLowerCase());
 }
 
-export function classifyComputeTransport(serviceUrl: string): "0g-router" | "0g-compute-provider" {
-  try {
-    const url = new URL(serviceUrl);
-    if (url.hostname === "router-api.0g.ai") return "0g-router";
-  } catch {
-    // The fetch below will fail closed with the malformed URL.
-  }
-  return "0g-compute-provider";
-}
 
 export function chatCompletionsUrl(serviceUrl: string): string {
   const base = serviceUrl.replace(/\/+$/, "");

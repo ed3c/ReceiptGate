@@ -22,9 +22,10 @@ if (wallet.live !== true || wallet.chainId !== 16602 || wallet.address?.toLowerC
 if (config.computeConfigured !== true) {
   blockers.push({ boundary: "0G_PRIVATE_COMPUTER_RUNTIME", next: "Connect/deposit in pc.testnet.0g.ai, create Private API key, then configure Vercel ZG_SERVICE_URL/ZG_MODEL/ZG_API_SECRET." });
 } else if (config.computeTransport !== "0g-router") {
-  blockers.push({ boundary: "0G_ROUTER_TRANSPORT", next: "Use https://router-api.0g.ai/v1 for the proof-aware hackathon path." });
-} else if ((config.computeModel || "").toLowerCase() !== expectedModel.toLowerCase()) {
-  blockers.push({ boundary: "0G_MODEL", next: `Set ZG_MODEL=${expectedModel}.` });
+  blockers.push({ boundary: "0G_ROUTER_TRANSPORT", next: "Use a recognized HTTPS 0G Router /v1 URL matching the API key network; do not switch testnet keys to mainnet." });
+}
+if (config.computeConfigured === true && (config.computeModel || "").toLowerCase() !== expectedModel.toLowerCase()) {
+  blockers.push({ boundary: "0G_MODEL", next: `Configured ${config.computeModel} is an inference model, not evidence of Private ${expectedModel} availability. Provision a compatible private model/provider; never fall back to Standard for private routes.` });
 }
 if (config.demoWallet?.serverEnforced !== true) {
   blockers.push({ boundary: "DEMO_WALLET_ALLOWLIST", next: `Before final locked demo, set DEMO_ALLOWED_WALLETS=${expectedWallet} in Vercel Production. This is public configuration; never set PRIVATE_KEY.` });
@@ -48,6 +49,7 @@ const receipt = {
   compute: {
     configured: config.computeConfigured === true,
     transport: config.computeTransport,
+    network: config.computeNetwork,
     model: config.computeModel,
   },
   demoWallet: config.demoWallet,

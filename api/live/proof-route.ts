@@ -1,3 +1,5 @@
+import { routerNetwork } from "../../adapters/0g/compute/transport";
+
 type TaskClass = "financial-side-effect" | "capability-benchmark" | "read-only-research";
 
 type RoutePolicy = {
@@ -122,13 +124,6 @@ export function chatCompletionsUrl(serviceUrl: string): string {
   return `${base}/v1/chat/completions`;
 }
 
-function is0gRouter(serviceUrl: string): boolean {
-  try {
-    return new URL(serviceUrl).hostname === "router-api.0g.ai";
-  } catch {
-    return false;
-  }
-}
 
 async function verifyWallet(request: Request, body: { address: string; message: string; signature: string }) {
   const response = await fetch(new URL("/api/wallet/verify", request.url), {
@@ -208,7 +203,8 @@ export default {
           proofBoundary: "no-live-proof-aware-routing-without-0g-router-runtime",
         }, 503);
       }
-      if (!is0gRouter(serviceUrl)) {
+      const network = routerNetwork(serviceUrl);
+      if (!network) {
         return json({
           schema: "receiptgate-proof-routing-receipt-v1",
           configured: true,
@@ -249,7 +245,7 @@ export default {
         signal: AbortSignal.timeout(25_000),
       });
       const text = await response.text();
-      if (!response.ok) throw new Error(`0G Router HTTP ${response.status}: ${text.slice(0, 260)}`);
+      if (!response.ok) throw new Error(`0G Router ${network} HTTP ${response.status} for required ${route.trustMode} model ${route.model}; no Standard/model fallback: ${text.slice(0, 260)}`);
       let payload: any = null;
       try { payload = JSON.parse(text); } catch { payload = null; }
       const content = typeof payload?.choices?.[0]?.message?.content === "string" ? payload.choices[0].message.content : "";
@@ -262,6 +258,8 @@ export default {
         authorized: true,
         generatedAt: new Date().toISOString(),
         route,
+        network,
+        inferenceProofVerified: false,
         routePolicyHash,
         requestHash,
         responseHash: await sha256Hex(content),

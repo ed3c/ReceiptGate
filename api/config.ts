@@ -1,3 +1,5 @@
+import { classifyComputeTransport, routerNetwork } from "../adapters/0g/compute/transport";
+
 const GALILEO_CHAIN_ID = 16602;
 const GALILEO_CHAIN_HEX = "0x40da";
 const GALILEO_RPC_URL = "https://evmrpc-testnet.0g.ai";
@@ -7,13 +9,7 @@ const RECEIPTGATE_DEMO_WALLET = "0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A";
 function computeTransport(serviceUrl?: string): "0g-router" | "0g-compute-provider" | "none" {
   const value = serviceUrl?.trim();
   if (!value) return "none";
-  try {
-    const url = new URL(value);
-    if (url.hostname === "router-api.0g.ai") return "0g-router";
-  } catch {
-    // Shape validation happens when the live request is constructed.
-  }
-  return "0g-compute-provider";
+  return classifyComputeTransport(value);
 }
 
 function allowedWallets(value?: string): string[] {
@@ -38,6 +34,7 @@ export default {
     return Response.json({
       computeConfigured: Boolean(serviceUrl && model && apiSecret),
       computeTransport: transport,
+      computeNetwork: serviceUrl ? routerNetwork(serviceUrl) : null,
       computeModel: model || null,
       agentConfigured: Boolean(agentUrl),
       serveProofConfigured: Boolean(agentUrl && agentServicePath),

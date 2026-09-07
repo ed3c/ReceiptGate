@@ -1,3 +1,6 @@
+import { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+export { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+
 type CapabilityDecision = {
   amount: number;
   currency: string;
@@ -92,15 +95,6 @@ function walletAllowed(address: string): boolean {
     .includes(address.toLowerCase());
 }
 
-export function classifyComputeTransport(serviceUrl: string): "0g-router" | "0g-compute-provider" {
-  try {
-    const url = new URL(serviceUrl);
-    if (url.hostname === "router-api.0g.ai") return "0g-router";
-  } catch {
-    // The live fetch below fails closed on malformed URLs.
-  }
-  return "0g-compute-provider";
-}
 
 export function chatCompletionsUrl(serviceUrl: string): string {
   const base = serviceUrl.replace(/\/+$/, "");

@@ -1,3 +1,6 @@
+import { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+export { classifyComputeTransport } from "../../adapters/0g/compute/transport";
+
 type Candidate = {
   id: string;
   kind: "purchase";
@@ -76,15 +79,6 @@ function walletAllowed(address: string): boolean {
     .includes(address.toLowerCase());
 }
 
-export function classifyComputeTransport(serviceUrl: string): "0g-router" | "0g-compute-provider" {
-  try {
-    const url = new URL(serviceUrl);
-    if (url.hostname === "router-api.0g.ai") return "0g-router";
-  } catch {
-    // The live fetch below will fail closed for malformed URLs.
-  }
-  return "0g-compute-provider";
-}
 
 export function chatCompletionsUrl(serviceUrl: string): string {
   const base = serviceUrl.replace(/\/+$/, "");
@@ -113,16 +107,16 @@ function parseStrictJson(content: unknown, name: string): unknown {
   }
 }
 
-function parseProcurement(content: unknown) {
-  const row = exactObject(parseStrictJson(content, "ProcurementAgent"), ["target", "amount", "currency", "risk", "reason"], "ProcurementAgent decision");
+export function parseProcurement(content: unknown) {
+  const row = exactObject(parseStrictJson(content, "ProcurementAgent"), ["target", "totalPriceUsd", "currency", "risk", "reason"], "ProcurementAgent decision");
   if (typeof row.target !== "string" || !row.target.trim()) throw new Error("ProcurementAgent target is missing");
-  if (typeof row.amount !== "number" || !Number.isFinite(row.amount) || row.amount <= 0) throw new Error("ProcurementAgent amount must be a finite positive number");
+  if (typeof row.totalPriceUsd !== "number" || !Number.isFinite(row.totalPriceUsd) || row.totalPriceUsd <= 0) throw new Error("ProcurementAgent totalPriceUsd must be a finite positive number");
   if (row.currency !== "USD") throw new Error("ProcurementAgent currency must be USD");
   if (row.risk !== "low" && row.risk !== "medium" && row.risk !== "high") throw new Error("ProcurementAgent risk must be low, medium, or high");
   if (typeof row.reason !== "string" || !row.reason.trim()) throw new Error("ProcurementAgent reason is missing");
   return {
     target: row.target.trim(),
-    amount: row.amount,
+    amount: row.totalPriceUsd,
     currency: "USD" as const,
     risk: row.risk,
     reason: row.reason.trim(),
@@ -429,8 +423,8 @@ export default {
         serviceUrl,
         apiSecret,
         model,
-        system: "You are ProcurementAgent. Return ONLY one JSON object with exactly these keys: target, amount, currency, risk, reason. The quoted price is 247 USD for 10,000 GPU inference credits and the hard budget is 300 USD. If the quote is within budget, propose that exact quoted price. currency must be USD. risk must be low|medium|high. Do not claim execution. No markdown.",
-        user: { task: "propose purchase candidate", product: "GPU inference credits", units: 10_000, quote: 247, budget: 300, currency: "USD" },
+        system: "You are ProcurementAgent. Return ONLY one JSON object with exactly these keys: target, totalPriceUsd, currency, risk, reason. totalPriceUsd is the TOTAL price in USD for the whole order, never the credit quantity or a unit price. The quote.totalPriceUsd is 247 USD for the whole order; quantity is 10000 credits. The hard budget is 300 USD. If the quote is within budget, propose that exact total price. currency must be USD. risk must be low|medium|high. Do not claim execution. No markdown.",
+        user: { task: "propose purchase candidate", product: "GPU inference credits", quantity: { value: 10_000, unit: "credits" }, quote: { totalPriceUsd: 247, currency: "USD" }, budgetUsd: 300 },
       });
       const procurement = parseProcurement(procurementRaw.content);
       const originalCandidate: Candidate = {
@@ -459,7 +453,7 @@ export default {
         serviceUrl,
         apiSecret,
         model,
-        system: "You are RiskAgent reviewing a candidate produced by another agent. Return ONLY one JSON object with exactly these keys: candidateHash, verdict, risk, reason. Echo the provided candidateHash EXACTLY. verdict must be ALLOW only when amount <= 300, currency is USD, target is GPU/inference credits, and risk is not high; otherwise DENY. risk must be low|medium|high. Do not execute anything. No markdown.",
+        system: "You are RiskAgent reviewing a candidate produced by another agent. Return ONLY one JSON object with exactly these keys: candidateHash, verdict, risk, reason. Echo the provided candidateHash EXACTLY. candidate.amount is the total price in USD; candidate.payload.units is a quantity, not money. verdict must be ALLOW only when amount <= 300, currency is USD, target is GPU/inference credits, and risk is not high; otherwise DENY. risk must be low|medium|high. Do not execute anything. No markdown.",
         user: { candidate: transmittedCandidate, candidateHash: transmittedHash, policy: { maxAmountUsd: 300, currency: "USD" } },
       });
       const review = parseRiskReview(riskRaw.content);

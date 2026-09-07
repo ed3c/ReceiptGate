@@ -114,10 +114,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
     clearTimeout(focusTimer);
     clearFocus();
     el.classList.add('rg-director-focus');
-    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
-    if (el.matches('button,[href],summary')) {
-      try { el.focus({ preventScroll: true }); } catch {}
-    }
+    // Presentation cues must preserve the user's scroll position and keyboard focus.
     if (cueCopy) setCue(cueCopy, cueStep);
     focusTimer = setTimeout(() => el.classList.remove('rg-director-focus'), focusHold);
     return true;
@@ -222,8 +219,9 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
     const style = doc.createElement('style');
     style.id = 'receiptgate-director-focus-style';
     style.textContent = `
-      .rg-director-focus{position:relative;z-index:12;box-shadow:0 0 0 2px #cb8aff,0 0 0 9px rgba(146,0,225,.18),0 0 90px rgba(146,0,225,.24)!important;transition:box-shadow .24s ease,transform .24s ease!important}
-      @media(prefers-reduced-motion:reduce){.rg-director-focus{transition:none!important}}
+      .rg-director-focus{box-shadow:0 0 0 2px #cb8aff,0 0 0 9px rgba(146,0,225,.18),0 0 90px rgba(146,0,225,.24)!important;animation:rgDirectorCue .9s ease-out}
+      @keyframes rgDirectorCue{from{outline:8px solid rgba(203,138,255,.65)}to{outline:0 solid transparent}}
+      @media(prefers-reduced-motion:reduce){.rg-director-focus{animation:none!important;transition:none!important}}
     `;
     doc.head.appendChild(style);
   }
