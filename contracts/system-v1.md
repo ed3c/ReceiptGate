@@ -21,7 +21,7 @@ The implementation MUST fail closed. Missing proof, malformed proof, proof/candi
 ## 2. Trust topology
 
 ```text
-probabilistic candidate source (for example 0G Compute)
+probabilistic candidate source (external model inference)
         |
         v
 CandidateAction -------------------------------+
@@ -85,11 +85,13 @@ Every gate call returns an `ExecutionReceipt` containing the candidate id/hash, 
 
 A ReceiptGate receipt records what ReceiptGate observed. It is not itself a provider attestation.
 
-## 7. 0G Compute boundary
+## 7. Legacy 0G Compute boundary
+
+As of the 2026-09-10 runtime decision, this adapter remains legacy implementation, not a prerequisite for the active sealed DSH path. Migration of existing production inference routes is not established by that decision; see §12.
 
 0G Compute is a candidate source, not gate authority.
 
-The Hackathon runtime uses the already-provisioned OpenAI-compatible direct endpoint:
+The legacy implementation supports the OpenAI-compatible direct endpoint:
 
 ```text
 ZG_SERVICE_URL + ZG_API_SECRET + model
@@ -175,3 +177,20 @@ bun run test:0g
 ```
 
 Required planted negatives keep side-effect call count at zero for invalid proof, candidate tampering, verifier outage, policy denial, and model-generated over-budget candidates.
+
+## 12. Sealed DSH runtime and claim boundary
+
+The selected deployment path is DSH with an external OpenRouter model and Agentic ID sealed sandbox. OpenClaw, Hermes, and Private Computer / 0G Compute are not prerequisites. OpenRouter inference is external; a sealed service proof does not establish sealed model inference or semantic correctness.
+
+`dshIData()` and `preflightDSH()` in `scripts/dsh-runtime.ts` own the framework/provider configuration and actual tool-call preflight. `scripts/provision-agentic-id.ts` owns local deployment. Runtime model names, URLs, balances, and deployment IDs are dated observations, not durable product guarantees.
+
+For the live multi-agent service protocol, `candidateHash()` in `api/live/multi-agent.ts` owns its explicit canonical candidate shape; this is distinct from generic `core/hash.ts`. Do not interchange the hashes. `verifyCandidateServeProof()` requires all of:
+
+- configured service URL, exact `/api/receiptgate` path, and expected Agent ID;
+- successful HTTP response with `accepted: true`, exact service name and candidate hash;
+- real `X-Agent-Proof`, official SDK verification, and expected Agent ID binding;
+- recomputed taskHash matching the exact request, response, URI, method and status.
+
+Missing configuration or evidence MUST BLOCK, including before inference when service configuration is missing. A valid proof over a rejected or mismatched candidate MUST still BLOCK. `executeVerifiedHandoff()` additionally requires exact inter-agent handoff binding and deterministic policy; only the core gate invokes the bounded callback.
+
+Executable owners: `tests/dsh-runtime.test.ts`, `tests/0g-router-serveproof.test.ts`, and `scripts/verify-dsh-service.ts`. The live canary uses fixed candidate/reviewer fixtures and a demo callback with no payment. Its successful 1/0 result proves only that scope. Full NORMAL/ATTACK may be marked LIVE only after actual procurement/risk inference, wallet authorization, real service proof, and execution gate pass through the deployed production path, with retained positive and tampered-handoff receipts. Local tests and a signed `/hello` are insufficient.

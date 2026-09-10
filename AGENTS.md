@@ -19,6 +19,19 @@ Repository-owned context has at most three required nodes:
 
 Plans and prompts under `docs/` are optional working material. They are never a fourth required hop.
 
+## Sealed DSH handoff (2026-09-10)
+
+Keep the same three-hop route: this file → `contracts/system-v1.md` §12 → the exact task/Issue and its executable owners below. Do not add a mandatory documentation hop.
+
+- Runtime choice: DSH + OpenRouter; retain Agentic ID sealed sandbox. Do not restore OpenClaw, Hermes, or Private Computer / 0G Compute as prerequisites.
+- Environment/tool-call preflight: `scripts/dsh-runtime.ts`, `tests/dsh-runtime.test.ts`.
+- Local provisioning: `scripts/provision-agentic-id.ts`.
+- Candidate-bound proof and execution gate: `api/live/multi-agent.ts`, `tests/0g-router-serveproof.test.ts`.
+- Real service positive/negative canary: `scripts/verify-dsh-service.ts`. Fixed candidates do not prove real multi-agent inference or Vercel readiness.
+- Optional operating instructions and dated observations: `docs/0g-router-serveproof-runbook.md` (retained filename; current content is DSH/OpenRouter).
+
+Never inspect or print `.env` contents or credentials. Runtime loading of local `.env` and use of named environment variables is authorized; wallet secrets remain local. The Python Keychain success is machine-specific, not permission to grant every application access. Ask before changing Keychain access controls.
+
 ## Agent-friendly shortest path
 
 Make the locally obvious path the globally correct path:
