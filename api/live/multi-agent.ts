@@ -110,7 +110,13 @@ function parseStrictJson(content: unknown, name: string): unknown {
   }
 }
 
-export function parseProcurement(content: unknown) {
+export function parseProcurement(content: unknown): {
+  target: string;
+  amount: number;
+  currency: "USD";
+  risk: RiskReview["risk"];
+  reason: string;
+} {
   const row = exactObject(parseStrictJson(content, "ProcurementAgent"), ["target", "totalPriceUsd", "currency", "risk", "reason"], "ProcurementAgent decision");
   if (typeof row.target !== "string" || !row.target.trim()) throw new Error("ProcurementAgent target is missing");
   if (typeof row.totalPriceUsd !== "number" || !Number.isFinite(row.totalPriceUsd) || row.totalPriceUsd <= 0) throw new Error("ProcurementAgent totalPriceUsd must be a finite positive number");
