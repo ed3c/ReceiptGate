@@ -49,10 +49,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
   ],
   "stateRules":[
     {"state":"runtime-blocked","when":"computeConfigured=false","next":"configure ZG_SERVICE_URL/ZG_MODEL/ZG_API_SECRET; never fall back silently"},
-    {"state":"normal-ready","when":"computeConfigured=true and normal not proven","next":"#multiRun"},
+    {"state":"normal-ready","when":"computeConfigured=true and serveProofConfigured=true and normal not proven","next":"#multiRun"},
     {"state":"attack-ready","when":"normal EXECUTED with sideEffectCalls=1","next":"#multiTamper"},
     {"state":"identity-ready","when":"tamper BLOCKED with sideEffectCalls=0 and agentConfigured=true","next":"#liveAgent"},
-    {"state":"complete","when":"tamper BLOCKED and required proof surfaces inspected","next":".takeaway"}
+    {"state":"complete","when":"normal executed and tamper handoff mismatch with verified ServeProof and required proof surfaces inspected","next":".takeaway"}
   ]
 }
 </script>
@@ -156,6 +156,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
         forbiddenFallback: 'Do not relabel fixture evidence as live Compute.'
       };
     }
+    if (config.serveProofConfigured !== true) return { action: 'configure-candidate-serveproof', selector: '#agentPill', autoExecutable: false, blocker: 'A sealed /api/receiptgate service and expected Agent ID are required. Full NORMAL/ATTACK is not LIVE.' };
     if (!normalProven) return { action: 'run-live-normal', ...action('run-live-normal'), autoExecutable: false };
     if (!attackProven) return { action: 'run-live-tamper', ...action('run-live-tamper'), autoExecutable: false };
     if (config.agentConfigured === true && !identityInspected) return { action: 'verify-agentic-id', ...action('verify-agentic-id'), autoExecutable: true };
@@ -167,7 +168,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
       schema: 'receiptgate-demo-director-state-v1',
       state,
       scenario,
-      runtime: config ? { computeConfigured: config.computeConfigured === true, agentConfigured: config.agentConfigured === true, chainId: config.wallet?.chainId || 16602 } : null,
+      runtime: config ? { computeConfigured: config.computeConfigured === true, agentConfigured: config.agentConfigured === true, serveProofConfigured: config.serveProofConfigured === true, chainId: config.wallet?.chainId || 16602 } : null,
       wallet: { connected: walletConnected() },
       proven: { normal: normalProven, tamper: attackProven, agenticIdInspected: identityInspected },
       visibleOracle: { verdict: text('#multiFinal'), sideEffectCalls: currentSideEffects() },
@@ -199,6 +200,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
     const receipt = parseLatestReceipt();
     if (verdict.includes('LIVE FLOW NOT COMPLETED')) {
       transition('live-error', { selector: '#multiState', cue: 'The live path did not complete. Inspect the raw receipt instead of guessing or falling back.', step: 'FAIL CLOSED' });
+      return;
+    }
+    if (receipt?.serveProof?.verified !== true || receipt?.agentA?.live !== true || receipt?.agentB?.live !== true || (scenario === 'tamper' && receipt?.handoff?.bound !== false)) {
+      transition('live-error', { selector: '#multiState', cue: 'Required live evidence is missing or the expected tamper was not observed. This is not a completed live demo.', step: 'FAIL CLOSED' });
       return;
     }
     await replayReceipt(receipt, scenario === 'tamper');

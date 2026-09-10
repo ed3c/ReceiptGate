@@ -317,7 +317,7 @@ async function connectAttestor() {
   return AgenticID.fromAttestor(process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai");
 }
 
-export async function verifyCandidateServeProof(candidate: Candidate, candidateHashValue: string, connect = connectAttestor): Promise<ServeProofGate> {
+export function serveProofConfigurationFailure(): ServeProofGate | null {
   const agentUrl = process.env.RECEIPTGATE_AGENT_URL?.trim();
   const servicePath = process.env.RECEIPTGATE_AGENT_SERVICE_PATH?.trim();
   const expectedAgentId = process.env.RECEIPTGATE_AGENT_ID?.trim();
@@ -338,6 +338,15 @@ export async function verifyCandidateServeProof(candidate: Candidate, candidateH
       reason: "RECEIPTGATE_AGENT_SERVICE_PATH must be /api/receiptgate",
     };
   }
+  return null;
+}
+
+export async function verifyCandidateServeProof(candidate: Candidate, candidateHashValue: string, connect = connectAttestor): Promise<ServeProofGate> {
+  const configurationFailure = serveProofConfigurationFailure();
+  if (configurationFailure) return configurationFailure;
+  const agentUrl = process.env.RECEIPTGATE_AGENT_URL!.trim();
+  const servicePath = process.env.RECEIPTGATE_AGENT_SERVICE_PATH!.trim();
+  const expectedAgentId = process.env.RECEIPTGATE_AGENT_ID!.trim();
 
   try {
     const ag = await connect();
@@ -452,6 +461,22 @@ export default {
       const wallet = verified.receipt;
       if (!walletAllowed(wallet.address)) {
         return json({ live: false, authorized: false, error: "wallet is not admitted to sponsored Compute" }, 403);
+      }
+
+      const unavailableProof = serveProofConfigurationFailure();
+      if (unavailableProof) {
+        return json({
+          configured: false,
+          live: false,
+          authorized: true,
+          error: unavailableProof.reason,
+          blockedAt: "serveproof-configuration",
+          serveProof: unavailableProof,
+          execution: { status: "blocked", attempted: false },
+          sideEffectCalls: 0,
+          computeCalls: 0,
+          proofBoundary: "runtime unavailable; no candidate or tamper verification was performed",
+        }, 503);
       }
 
       const serviceUrl = process.env.ZG_SERVICE_URL?.trim();

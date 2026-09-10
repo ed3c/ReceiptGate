@@ -85,6 +85,15 @@ jobs:
             }
             await auth(true);
             if(config.computeConfigured===true){
+              if(config.serveProofConfigured!==true){
+                const authorization=await auth();
+                const response=await fetch(`${process.env.BASE_URL}/api/live/multi-agent`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...authorization,tamper:false})});
+                const body=await response.text();
+                await Bun.write("artifacts/live-runtime-blocked.json",JSON.stringify({status:response.status,body},null,2));
+                const blocked=JSON.parse(body);
+                if(response.status!==503||blocked.blockedAt!=="serveproof-configuration"||blocked.sideEffectCalls!==0||blocked.computeCalls!==0)throw new Error("Missing ServeProof did not fail closed before Compute");
+                throw new Error("Full LIVE acceptance blocked: sealed candidate-bound ServeProof is not configured; zero Compute and side-effect calls verified");
+              }
               const normalAuth=await auth();
               const normalResponse=await fetch(`${process.env.BASE_URL}/api/live/multi-agent`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...normalAuth,tamper:false})});
               const normal=await normalResponse.json();

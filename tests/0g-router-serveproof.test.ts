@@ -93,6 +93,52 @@ describe("0G OpenAI-compatible runtime transport", () => {
 });
 
 describe("ServeProof is always an execution precondition", () => {
+  test("authenticated normal and tamper stop before Compute when the sealed service configuration is missing or invalid", async () => {
+    const handler = (await import("../api/live/multi-agent")).default;
+    const originalFetch = globalThis.fetch;
+    const oldAllowlist = process.env.DEMO_ALLOWED_WALLETS;
+    const urls: string[] = [];
+    delete process.env.DEMO_ALLOWED_WALLETS;
+    process.env.ZG_SERVICE_URL = "https://router-api-testnet.integratenetwork.work/v1";
+    process.env.ZG_MODEL = "qwen2.5-omni";
+    process.env.ZG_API_SECRET = "sk-test";
+    globalThis.fetch = (async (input) => {
+      urls.push(String(input));
+      if (new URL(String(input)).pathname !== "/api/wallet/verify") throw new Error("unexpected provider call");
+      return Response.json({ ok: true, address: "0x5688FE84cf3f3B7E37e31F6205C619EE06B6925A", checks: { signature: true } });
+    }) as typeof fetch;
+    try {
+      for (const field of ["RECEIPTGATE_AGENT_URL", "RECEIPTGATE_AGENT_ID", "RECEIPTGATE_AGENT_SERVICE_PATH"]) {
+        for (const value of ["", "invalid"]) {
+          // URL availability is tested separately; this preflight checks required configuration.
+          if (field === "RECEIPTGATE_AGENT_URL" && value) continue;
+          process.env.RECEIPTGATE_AGENT_URL = "https://agent.example";
+          process.env.RECEIPTGATE_AGENT_ID = "394";
+          process.env.RECEIPTGATE_AGENT_SERVICE_PATH = "/api/receiptgate";
+          process.env[field] = value;
+          for (const tamper of [false, true]) {
+            const response = await handler.fetch(new Request("https://receiptgate.example/api/live/multi-agent", {
+              method: "POST", body: JSON.stringify({ address: "test", message: "test", signature: "test", tamper }),
+            }));
+            const body = await response.json();
+            expect(response.status).toBe(503);
+            expect(body.authorized).toBe(true);
+            expect(body.blockedAt).toBe("serveproof-configuration");
+            expect(body.execution.status).toBe("blocked");
+            expect(body.sideEffectCalls).toBe(0);
+            expect(body.computeCalls).toBe(0);
+            expect(body.live).toBe(false);
+          }
+        }
+      }
+      expect(urls).toHaveLength(10);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (oldAllowlist == null) delete process.env.DEMO_ALLOWED_WALLETS;
+      else process.env.DEMO_ALLOWED_WALLETS = oldAllowlist;
+    }
+  });
+
   test("missing ServeProof blocks even when caller marks it optional", async () => {
     const candidate = {
       id: "test",
@@ -205,8 +251,9 @@ describe("explicit procurement total price", () => {
     const previousAllowlist = process.env.DEMO_ALLOWED_WALLETS;
     try {
       delete process.env.DEMO_ALLOWED_WALLETS;
-      delete process.env.RECEIPTGATE_AGENT_URL;
-      delete process.env.RECEIPTGATE_AGENT_SERVICE_PATH;
+      process.env.RECEIPTGATE_AGENT_URL = "https://agent.example";
+      process.env.RECEIPTGATE_AGENT_SERVICE_PATH = "/api/receiptgate";
+      process.env.RECEIPTGATE_AGENT_ID = "394";
       process.env.ZG_SERVICE_URL = "https://router-api-testnet.integratenetwork.work/v1";
       process.env.ZG_MODEL = "qwen2.5-omni";
       process.env.ZG_API_SECRET = "sk-test";
@@ -219,7 +266,7 @@ describe("explicit procurement total price", () => {
         let calls = 0;
         globalThis.fetch = (async (url: any, options: any) => {
           if (String(url).endsWith('/api/wallet/verify')) return Response.json({ ok: true, address: "0x" + "1".repeat(40), checks: { signature: true } });
-          expect(String(url)).toBe("https://router-api-testnet.integratenetwork.work/v1/chat/completions");
+          if (String(url) !== "https://router-api-testnet.integratenetwork.work/v1/chat/completions") throw new Error("fixture attestor unavailable");
           const input = JSON.parse(options.body);
           const user = JSON.parse(input.messages[1].content);
           calls++;
