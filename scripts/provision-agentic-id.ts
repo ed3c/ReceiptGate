@@ -1,29 +1,27 @@
-import { preflightHermes } from "./hermes-runtime";
+import { preflightDSH } from "./dsh-runtime";
 import { mkdir } from "node:fs/promises";
 import { AgenticID } from "@0gfoundation/0g-agenticid-sdk";
 
 const privateKey = process.env.PRIVATE_KEY?.trim();
 const attestorUrl = process.env.ZERO_G_ATTESTOR_URL?.trim() || "https://agenticid.0g.ai";
-const agentApiKey = process.env.AGENT_API_KEY?.trim() || process.env.ZG_API_SECRET?.trim();
-const requestedModel = process.env.ZG_AGENT_MODEL?.trim();
-const framework = process.env.ZG_AGENT_FRAMEWORK?.trim() || "hermes";
+const agentApiKey = process.env.GEMINI_API_KEY?.trim();
+const requestedModel = process.env.AGENT_MODEL?.trim();
+const framework = "dsh";
 const name = process.env.ZG_AGENT_NAME?.trim() || "ReceiptGate Demo Agent";
-const idempotencyKey = process.env.ZG_AGENT_IDEMPOTENCY_KEY?.trim() || "receiptgate-hermes-testnet-v1";
+const idempotencyKey = process.env.AGENT_IDEMPOTENCY_KEY?.trim() || "receiptgate-dsh-google-v1";
 
 const MIN_SANDBOX_BALANCE_WEI = 100_000_000_000_000_000n; // 0.1 OG
 const TARGET_SANDBOX_BALANCE_WEI = 200_000_000_000_000_000n; // 0.2 OG
 
-if (process.env.GITHUB_ACTIONS === "true" && process.env.ALLOW_GHA_PRIVATE_KEY_PROVISION !== "true") {
+if (process.env.GITHUB_ACTIONS === "true") {
   throw new Error("Agentic ID provisioning is local-only by default; PRIVATE_KEY must not enter normal GitHub Actions runtime");
 }
 if (!privateKey || !/^0x[0-9a-fA-F]{64}$/.test(privateKey)) throw new Error("PRIVATE_KEY must be a 0x-prefixed 32-byte demo-wallet key");
-if (!agentApiKey) throw new Error("AGENT_API_KEY (or ZG_API_SECRET fallback) is required for the sealed runtime");
+if (!agentApiKey) throw new Error("GEMINI_API_KEY is required for the sealed runtime");
 
-if (framework !== "hermes") throw new Error("This provisioning path supports Hermes only; DSH requires a separately verified inference route");
 const model = requestedModel || "";
-const serviceUrl = process.env.ZG_SERVICE_URL?.trim() || "";
-const iData = await preflightHermes(serviceUrl, model, agentApiKey);
-console.log(JSON.stringify({ phase: "hermes-preflight", framework, model, serviceUrl, toolCalling: true, inferenceProofVerified: false }));
+const iData = await preflightDSH(model, agentApiKey);
+console.log(JSON.stringify({ phase: "dsh-preflight", framework, provider: "google", model, toolCalling: true, inferenceProofVerified: false }));
 
 const ag = await AgenticID.fromAttestor(attestorUrl, { account: privateKey as `0x${string}` });
 
@@ -77,7 +75,7 @@ console.log(JSON.stringify({
   attestorUrl,
   framework,
   model,
-  serviceUrl,
+  provider: "google",
   idempotencyKey,
   trustRootsAcked: true,
   sandboxBalanceWei: sandboxBalanceWei.toString(),
